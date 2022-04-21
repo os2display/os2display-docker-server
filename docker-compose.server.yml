@@ -1,0 +1,100 @@
+version: "3"
+
+networks:
+  frontend:
+    external: true
+  app:
+    driver: bridge
+    internal: false
+
+services:
+  api:
+    image: itkdev/os2display-api-service:alpha
+    restart: unless-stopped
+    networks:
+      - app
+    environment:
+      # These values MUST be set to host the api and have no sensible default values. 
+      - APP_SECRET=${APP_SECRET:?err}
+      - APP_DATABASE_URL=${APP_DATABASE_URL:?err}
+      - APP_JWT_PASSPHRASE=${APP_JWT_PASSPHRASE:?err}
+
+    volumes:
+      - ./jwt:/var/www/html/config/jwt:rw
+      - ./media:/var/www/html/public/media:rw
+    depends_on:
+      - mariadb
+
+  nginx-api:
+    image: itkdev/os2display-api-service-nginx:alpha
+    restart: unless-stopped
+    networks:
+      - app
+      - frontend
+    environment:
+      - PHP_FPM_SERVER=api
+    depends_on:
+      - api
+    ports:
+      - '80'
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=frontend"
+      - "traefik.http.routers.apios2display-http.rule=Host(`${COMPOSE_DOMAIN}`)"
+      - "traefik.http.routers.apios2display-http.entrypoints=web"
+      - "traefik.http.routers.apios2display-http.middlewares=redirect-to-https"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+      - "traefik.http.routers.apios2display.rule=Host(`${COMPOSE_DOMAIN}`)"
+      - "traefik.http.routers.apios2display.entrypoints=websecure"
+      # - "traefik.http.routers.apios2display.middlewares=apios2display"
+      # - "traefik.http.middlewares.apios2display.ipwhitelist.sourcerange=212.10.60.163, 10.225.0.0/16"
+      # - "traefik.http.routers.${COMPOSE_PROJECT_NAME}.middlewares=ITKBasicAuth@file"
+    volumes:
+      - ./media:/var/www/html/public/media:rw
+
+  # admin:
+  #   image: itkdev/os2display-admin-client:alpha
+  #   restart: unless-stopped
+  #   networks:
+  #     - app
+  #     - frontend
+  #   ports:
+  #     - '80'
+  #   labels:
+  #     - "traefik.enable=true"
+  #     - "traefik.docker.network=frontend"
+  #     - "traefik.http.routers.adminos2display-http.rule=Host(`${COMPOSE_DOMAIN}`) && PathPrefix(`/admin/`)"
+  #     - "traefik.http.routers.adminos2display-http.entrypoints=web"
+  #     - "traefik.http.routers.adminos2display-http.middlewares=redirect-to-https"
+  #     - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+  #     - "traefik.http.routers.adminos2display.rule=Host(`${COMPOSE_DOMAIN}`) && PathPrefix(`/admin/`)"
+  #     - "traefik.http.routers.adminos2display.entrypoints=websecure"
+  #     # - "traefik.http.routers.adminos2display.middlewares=apios2display"
+  #     # - "traefik.http.routers.${COMPOSE_PROJECT_NAME}.middlewares=ITKBasicAuth@file"
+
+  # client:
+  #   image: itkdev/os2display-client:alpha
+  #   restart: unless-stopped
+  #   networks:
+  #     - app
+  #     - frontend
+  #   ports:
+  #     - '80'
+  #   labels:
+  #     - "traefik.enable=true"
+  #     - "traefik.docker.network=frontend"
+  #     - "traefik.http.routers.clientos2display-http.rule=Host(`${COMPOSE_DOMAIN}`) && PathPrefix(`/screen/`)"
+  #     - "traefik.http.routers.clientos2display-http.entrypoints=web"
+  #     - "traefik.http.routers.clientos2display-http.middlewares=redirect-to-https"
+  #     - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+  #     - "traefik.http.routers.clientos2display.rule=Host(`${COMPOSE_DOMAIN}`) && PathPrefix(`/screen/`)"
+  #     - "traefik.http.routers.clientos2display.entrypoints=websecure"
+  #     # - "traefik.http.routers.clientos2display.middlewares=apios2display"
+  #     # - "traefik.http.routers.${COMPOSE_PROJECT_NAME}.middlewares=ITKBasicAuth@file"
+
+  redis:
+    image: 'redis:6'
+    networks:
+      - app
+    ports:
+      - '6379'
