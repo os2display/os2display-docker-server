@@ -49,10 +49,11 @@ services:
       # Docs
       - "traefik.http.routers.apidocsos2display-http.rule=Host(`${COMPOSE_DOMAIN}`) && PathPrefix(`/docs`)"
       - "traefik.http.routers.apidocsos2display-http.entrypoints=web"
-      - "traefik.http.routers.apidocsos2display-http.middlewares=redirect-to-https"
+      - "traefik.http.routers.apidocsos2display-http.middlewares=redirect-to-https-docs"
       - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
       - "traefik.http.routers.apidocsos2display.rule=Host(`${COMPOSE_DOMAIN}`) && PathPrefix(`/docs`)"
       - "traefik.http.routers.apidocsos2display.entrypoints=websecure"
+      #Middleware
       # - "traefik.http.routers.apios2display.middlewares=apios2display"
       # - "traefik.http.middlewares.apios2display.ipwhitelist.sourcerange=212.10.60.163, 10.225.0.0/16"
       # - "traefik.http.routers.${COMPOSE_PROJECT_NAME}.middlewares=ITKBasicAuth@file"
