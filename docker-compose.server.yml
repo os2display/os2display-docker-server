@@ -69,9 +69,6 @@ services:
       - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
       - "traefik.http.routers.adminos2display.rule=Host(`${COMPOSE_DOMAIN}`) && PathPrefix(`${COMPOSE_ADMIN_CLIENT_PATH}`)"
       - "traefik.http.routers.adminos2display.entrypoints=websecure"
-      - "traefik.http.middlewares.adminos2display-strip.stripprefix.prefixes=${COMPOSE_ADMIN_CLIENT_PATH}"
-      - "traefik.http.middlewares.adminos2display-strip.stripprefix.forceSlash=false"
-      - "traefik.http.routers.adminos2display.middlewares=adminos2display-strip"
       # - "traefik.http.routers.adminos2display.middlewares=apios2display"
       # - "traefik.http.routers.${COMPOSE_PROJECT_NAME}.middlewares=ITKBasicAuth@file"
 
@@ -92,9 +89,6 @@ services:
       - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
       - "traefik.http.routers.clientos2display.rule=Host(`${COMPOSE_DOMAIN}`) && PathPrefix(`${COMPOSE_SCREEN_CLIENT_PATH}`)"
       - "traefik.http.routers.clientos2display.entrypoints=websecure"
-      - "traefik.http.middlewares.clientos2display-strip.stripprefix.prefixes=${COMPOSE_SCREEN_CLIENT_PATH}"
-      - "traefik.http.middlewares.clientos2display-strip.stripprefix.forceSlash=false"
-      - "traefik.http.routers.adminos2display.middlewares=clientos2display-strip"
       # - "traefik.http.routers.clientos2display.middlewares=apios2display"
       # - "traefik.http.routers.${COMPOSE_PROJECT_NAME}.middlewares=ITKBasicAuth@file"
 
