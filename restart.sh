@@ -1,9 +1,9 @@
 #!/bin/sh
 
-docker-compose --env-file .env.local -f docker-compose.server.yml pull
-docker-compose --env-file .env.local -f docker-compose.server.yml up --force-recreate --detach --remove-orphans
+docker-compose --env-file .env.docker.local -f docker-compose.server.yml pull
+docker-compose --env-file .env.docker.local -f docker-compose.server.yml up --force-recreate --detach --remove-orphans
 
-docker-compose --env-file .env.local -f docker-compose.server.yml exec --user deploy api bin/console doctrine:migrations:migrate --no-interaction
+docker-compose --env-file .env.docker.local -f docker-compose.server.yml exec --user deploy api bin/console doctrine:migrations:migrate --no-interaction
 # 2022-03-14: Keys are now persisteted in volume 
 # docker-compose --env-file .env.docker.local -f docker-compose.server.yml exec --user deploy api bin/console lexik:jwt:generate-keypair
 
