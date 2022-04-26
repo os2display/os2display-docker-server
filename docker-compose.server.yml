@@ -82,6 +82,8 @@ services:
     networks:
       - app
       - frontend
+    environment:
+      - APP_SCREEN_CLIENT_PATH=${COMPOSE_SCREEN_CLIENT_PATH:?err}
     ports:
       - '80'
     labels:
