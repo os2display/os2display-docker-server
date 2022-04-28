@@ -9,7 +9,7 @@ networks:
 
 services:
   api:
-    image: itkdev/os2display-api-service:alpha
+    image: itkdev/os2display-api-service:${COMPOSE_VERSION}
     restart: unless-stopped
     networks:
       - app
@@ -44,7 +44,7 @@ services:
       - mariadb
 
   nginx-api:
-    image: itkdev/os2display-api-service-nginx:alpha
+    image: itkdev/os2display-api-service-nginx:${COMPOSE_VERSION}
     restart: unless-stopped
     networks:
       - app
@@ -76,7 +76,7 @@ services:
       - ./media:/var/www/html/public/media:rw
 
   admin:
-    image: itkdev/os2display-admin-client:alpha
+    image: itkdev/os2display-admin-client:${COMPOSE_VERSION}
     restart: unless-stopped
     networks:
       - app
@@ -100,7 +100,7 @@ services:
       # - "traefik.http.routers.${COMPOSE_PROJECT_NAME}.middlewares=ITKBasicAuth@file"
 
   client:
-    image: itkdev/os2display-client:alpha
+    image: itkdev/os2display-client:${COMPOSE_VERSION}
     restart: unless-stopped
     networks:
       - app
