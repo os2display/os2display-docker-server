@@ -14,10 +14,27 @@ services:
     networks:
       - app
     environment:
-      # These values MUST be set to host the api and have no sensible default values. 
+      # PHP config values
+      - PHP_MAX_EXECUTION_TIME=${PHP_MAX_EXECUTION_TIME}
+      - PHP_MEMORY_LIMIT=${PHP_MEMORY_LIMIT}
+      - PHP_UPLOAD_MAX_FILESIZE=${PHP_UPLOAD_MAX_FILESIZE}
+      # APP (Symfony)
       - APP_SECRET=${APP_SECRET:?err}
       - APP_DATABASE_URL=${APP_DATABASE_URL:?err}
       - APP_JWT_PASSPHRASE=${APP_JWT_PASSPHRASE:?err}
+      - APP_JWT_TOKEN_TTL=${APP_JWT_TOKEN_TTL}
+      - APP_JWT_REFRESH_TOKEN_TTL=${APP_JWT_REFRESH_TOKEN_TTL}
+      - APP_ENV=${APP_ENV}
+      - APP_TRUSTED_PROXIES=${APP_TRUSTED_PROXIES}
+      - APP_CORS_ALLOW_ORIGIN=${APP_CORS_ALLOW_ORIGIN}
+      - APP_DEFAULT_DATE_FORMAT=${APP_DEFAULT_DATE_FORMAT}
+      - APP_OIDC_METADATA_URL=${OIDC_METADATA_URL}
+      - APP_OIDC_CLIENT_ID=${OIDC_CLIENT_ID}
+      - APP_OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
+      - APP_OIDC_REDIRECT_URI=${OIDC_REDIRECT_URI}
+      - APP_OIDC_LEEWAY=${OIDC_LEEWAY}
+      - APP_REDIS_CACHE_PREFIX=${APP_REDIS_CACHE_PREFIX}
+      - APP_REDIS_CACHE_DSN=${APP_REDIS_CACHE_DSN}
 
     volumes:
       - ./jwt:/var/www/html/config/jwt:rw
@@ -33,6 +50,7 @@ services:
       - frontend
     environment:
       - PHP_FPM_SERVER=api
+      - NGINX_FPM_UPLOAD_MAX=${NGINX_FPM_UPLOAD_MAX}
     depends_on:
       - api
     ports:
@@ -62,6 +80,9 @@ services:
     networks:
       - app
       - frontend
+    environment:
+      - API_PATH=${API_PATH}
+      - APP_TOUCH_BUTTON_REGIONS=${APP_TOUCH_BUTTON_REGIONS}
     ports:
       - '80'
     labels:
@@ -84,6 +105,11 @@ services:
       - frontend
     environment:
       - APP_SCREEN_CLIENT_PATH=${COMPOSE_SCREEN_CLIENT_PATH:?err}
+      - APP_API_AUTHENTICATION_ENDPOINT=${APP_API_AUTHENTICATION_ENDPOINT}
+      - APP_API_AUTHENTICATION_REFRESH_ENDPOINT=${APP_API_AUTHENTICATION_REFRESH_ENDPOINT}
+      - APP_DATA_PULL_INTERVAL=${APP_DATA_PULL_INTERVAL}
+      - APP_SCHEDULING_INTERVAL=${APP_SCHEDULING_INTERVAL}
+      - APP_DEBUG=${APP_DEBUG}
     ports:
       - '80'
     labels:
