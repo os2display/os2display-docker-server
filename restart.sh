@@ -19,6 +19,7 @@ docker-compose --env-file .env.docker.local -f docker-compose.server.yml exec --
 docker-compose --env-file .env.docker.local -f docker-compose.server.yml exec --user deploy api bin/console app:template:load https://raw.githubusercontent.com/os2display/display-templates/develop/src/slideshow/slideshow.json
 docker-compose --env-file .env.docker.local -f docker-compose.server.yml exec --user deploy api bin/console app:template:load https://raw.githubusercontent.com/os2display/display-templates/develop/src/table/table.json
 docker-compose --env-file .env.docker.local -f docker-compose.server.yml exec --user deploy api bin/console app:template:load https://raw.githubusercontent.com/os2display/display-templates/develop/src/video/video.json
+docker-compose --env-file .env.docker.local -f docker-compose.server.yml exec --user deploy api bin/console app:template:load https://raw.githubusercontent.com/os2display/display-templates/develop/build/travel/travel.json
 
 # app:screen-layouts:load
 docker-compose --env-file .env.docker.local -f docker-compose.server.yml exec --user deploy api bin/console app:screen-layouts:load https://raw.githubusercontent.com/os2display/display-templates/develop/src/screen-layouts/full-screen.json
