@@ -36,12 +36,9 @@ services:
       - APP_OIDC_LEEWAY=${OIDC_LEEWAY}
       - APP_REDIS_CACHE_PREFIX=${APP_REDIS_CACHE_PREFIX}
       - APP_REDIS_CACHE_DSN=${APP_REDIS_CACHE_DSN}
-
     volumes:
       - ./jwt:/var/www/html/config/jwt:rw
       - ./media:/var/www/html/public/media:rw
-    depends_on:
-      - mariadb
 
   nginx-api:
     image: itkdev/os2display-api-service-nginx:${COMPOSE_VERSION}
