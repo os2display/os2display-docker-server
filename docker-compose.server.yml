@@ -53,7 +53,7 @@ services:
     depends_on:
       - api
     ports:
-      - '80'
+      - "8080"
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=frontend"
@@ -84,7 +84,7 @@ services:
       - API_PATH=${API_PATH}
       - APP_TOUCH_BUTTON_REGIONS=${APP_TOUCH_BUTTON_REGIONS}
     ports:
-      - '80'
+      - '8080'
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=frontend"
@@ -112,7 +112,7 @@ services:
       - APP_SCHEDULING_INTERVAL=${APP_SCHEDULING_INTERVAL}
       - APP_DEBUG=${APP_DEBUG}
     ports:
-      - '80'
+      - '8080'
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=frontend"
