@@ -102,7 +102,7 @@ services:
       # - "traefik.http.routers.${COMPOSE_PROJECT_NAME}.middlewares=ITKBasicAuth@file"
 
   client:
-    image: os2display/os2display-client:${COMPOSE_VERSION}
+    image: itkdev/os2display-client:${COMPOSE_VERSION}
     restart: unless-stopped
     networks:
       - app
