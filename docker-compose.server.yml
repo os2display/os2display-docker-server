@@ -9,7 +9,7 @@ networks:
 
 services:
   api:
-    image: itkdev/os2display-api-service:${COMPOSE_VERSION}
+    image: itkdev/os2display-api-service:${COMPOSE_VERSION_API}
     restart: unless-stopped
     networks:
       - app
@@ -62,7 +62,7 @@ services:
       - ./media:/var/www/html/public/media:rw
 
   nginx-api:
-    image: itkdev/os2display-api-service-nginx:${COMPOSE_VERSION}
+    image: itkdev/os2display-api-service-nginx:${COMPOSE_VERSION_API}
     restart: unless-stopped
     networks:
       - app
@@ -94,7 +94,7 @@ services:
       - ./media:/var/www/html/public/media:rw
 
   admin:
-    image: itkdev/os2display-admin-client:${COMPOSE_VERSION}
+    image: itkdev/os2display-admin-client:${COMPOSE_VERSION_ADMIN}
     restart: unless-stopped
     networks:
       - app
@@ -119,7 +119,7 @@ services:
       # - "traefik.http.routers.${COMPOSE_PROJECT_NAME}.middlewares=ITKBasicAuth@file"
 
   client:
-    image: itkdev/os2display-client:${COMPOSE_VERSION}
+    image: itkdev/os2display-client:${COMPOSE_VERSION_CLIENT}
     restart: unless-stopped
     networks:
       - app
