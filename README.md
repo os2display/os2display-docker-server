@@ -33,4 +33,9 @@ TEMPLATES_RELEASE=2.1.0 ./load-templates-prod.sh
 
 #### Staging
 
-In staging run the script
+In staging run the script `load-templates-develop.sh`. This will load the templates from the develop branch of the
+template repository.
+
+```
+./load-templates-develop.sh
+```
