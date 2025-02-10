@@ -70,8 +70,6 @@ services:
       - NGINX_FPM_UPLOAD_MAX=${NGINX_FPM_UPLOAD_MAX}
     depends_on:
       - api
-    ports:
-      - "8080"
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=frontend"
@@ -102,8 +100,6 @@ services:
       - API_PATH=${API_PATH}
       - APP_TOUCH_BUTTON_REGIONS=${APP_TOUCH_BUTTON_REGIONS}
       - APP_REJSEPLANEN_API_KEY=${APP_REJSEPLANEN_API_KEY}
-    ports:
-      - '8080'
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=frontend"
@@ -131,8 +127,6 @@ services:
       - APP_DATA_PULL_INTERVAL=${APP_DATA_PULL_INTERVAL}
       - APP_SCHEDULING_INTERVAL=${APP_SCHEDULING_INTERVAL}
       - APP_DEBUG=${APP_DEBUG}
-    ports:
-      - '8080'
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=frontend"
