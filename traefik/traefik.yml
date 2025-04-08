@@ -1,0 +1,27 @@
+
+api:
+  dashboard: true
+  insecure: true
+  debug: true
+
+entryPoints:
+  web:
+    address: ":80"
+  websecure:
+    address: ":443"
+    http:
+      tls:
+        {}
+
+providers:
+  file:
+    directory: /config
+  docker:
+    endpoint: "tcp://socket-proxy:2375"
+    exposedByDefault: false
+
+# https://doc.traefik.io/traefik/routing/services/#insecureskipverify
+serversTransport:
+  insecureSkipVerify: true
+
+
