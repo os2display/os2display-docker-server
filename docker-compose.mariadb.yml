@@ -1,0 +1,21 @@
+networks:
+  app:
+    driver: bridge
+    internal: false
+
+services:
+  mariadb:
+    image: mariadb:10.11.11
+    restart: unless-stopped
+    networks:
+      - app
+    environment:
+      - MARIADB_DATABASE=${MARIADB_DATABASE}
+      - MARIADB_USER=${MARIADB_USER}
+      - MARIADB_PASSWORD=${MARIADB_PASSWORD}
+      - MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD}
+    volumes:
+      - mariadb:/var/lib/mysql:rw
+ 
+volumes:
+    mariadb:
