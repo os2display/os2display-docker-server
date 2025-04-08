@@ -1,0 +1,178 @@
+version: '3'
+silent: true
+
+tasks:
+  default:
+    desc: The default task that shows help
+    cmds:
+      - task --list
+
+  install:
+    desc: Install the project
+    deps:
+      - _dc_compile
+    cmds:
+      - task _show_preinstall_notes
+      - echo "Installing"
+      - docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml pull
+      - docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml up --force-recreate --detach --remove-orphans
+      - echo "Waiting for database to be ready"
+      - sleep 10
+      - echo "Initialize the database"
+      - docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml exec api bin/console doctrine:schema:create
+      - echo "Clearing the cache"
+      - task cc
+      - echo "Create jwt key pair"
+      - docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml exec --user 1000:1000 api bin/console lexik:jwt:generate-keypair --skip-if-exists
+      - task tenant_add
+      - echo "CREATE AN ADMIN USER. CHOOSE THE TENANT YOU JUST CREATED."
+      - task user_add
+      - task load_templates
+      - task _show_notes
+
+  reinstall:
+    desc: Reinstall from scratch. Removes the database, all containers, and volumes.
+    deps:
+      - down
+    cmds:
+      - task install
+
+  down:
+    desc: Remove all containers and volumes
+    deps:
+      - stop
+    cmds:
+      - docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml down -v
+
+  up:
+    desc: Take the environment up without altering the existing state of the containers
+    cmds:
+      - docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml up -d
+
+  stop:
+    desc: Stop all containers without altering anything else
+    cmds:
+      - docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml stop
+
+  tenant_add:
+    desc: Add a new tenant group
+    cmds:
+      - echo ""
+      - echo "Add a tenant"
+      - echo "===================================================="
+      - echo "A tenant is a group of users that share the same configuration. F. ex. IT, Library, Schools etc."
+      - echo "You have to provide tenant id, tenant title and optionally a description."
+      - echo "===================================================="
+      - echo ""
+      - docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml exec -T api bin/console app:tenant:add
+
+  user_add:
+    desc: Add a new user (editor or admin)
+    cmds:
+      - echo ""
+      - echo "Add a user"
+      - echo "===================================================="
+      - echo "You have to provide email, password, full name, role (editor or admin) and the tenant id."
+      - echo "===================================================="
+      - echo ""
+      - docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml exec -T api bin/console app:user:add
+
+  load_templates:
+    desc: Load templates and screen layouts
+    cmds:
+      - |
+        TEMPLATES_RELEASE=$(grep ^TASK_VERSION_TEMPLATES= .env.docker.local | cut -d '=' -f 2)
+        TEMPLATES=$(grep ^TASK_TEMPLATES= .env.docker.local | cut -d '=' -f 2 | tr -d ' "' | tr ',' ' ')
+        if [ -z "$TEMPLATES_RELEASE" ]; then
+          echo "Error: TASK_VERSION_TEMPLATES is not set in .env.docker.local"
+          exit 1
+        fi
+        if [ -z "$TEMPLATES" ]; then
+          echo "Error: TASK_TEMPLATES is not set or empty in .env.docker.local"
+          exit 1
+        fi
+        echo "Using TEMPLATES_RELEASE=$TEMPLATES_RELEASE"
+        echo "Using TEMPLATES=$TEMPLATES"
+        for TEMPLATE in $TEMPLATES; do
+          CONFIG_URL="https://raw.githubusercontent.com/os2display/display-templates/refs/tags/$TEMPLATES_RELEASE/build/$TEMPLATE-config-main.json"
+          echo "Loading template: $TEMPLATE"
+          docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml exec --user deploy api bin/console app:template:load -p $CONFIG_URL
+        done
+
+        SCREEN_LAYOUTS=$(grep ^TASK_SCREEN_LAYOUTS= .env.docker.local | cut -d '=' -f 2 | tr -d ' "' | tr ',' ' ')
+        if [ -z "$SCREEN_LAYOUTS" ]; then
+          echo "Error: TASK_SCREEN_LAYOUTS is not set or empty in .env.docker.local"
+          exit 1
+        fi
+        echo "Using SCREEN_LAYOUTS=$SCREEN_LAYOUTS"
+        for SCREEN_LAYOUT in $SCREEN_LAYOUTS; do
+          CONFIG_URL="https://raw.githubusercontent.com/os2display/display-templates/refs/tags/$TEMPLATES_RELEASE/src/screen-layouts/$SCREEN_LAYOUT.json"
+          echo "Loading screen layout: $SCREEN_LAYOUT"
+          docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml exec --user deploy api bin/console app:screen-layouts:load --update --cleanup-regions $CONFIG_URL
+        done
+
+  logs:
+    desc: Follow docker logs from the containers
+    cmds:
+      - docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml logs -f --tail=50
+
+  cc:
+    desc: Clear the cache
+    cmds:
+      - docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml exec api bin/console cache:clear
+
+  _show_preinstall_notes:
+    cmds:
+      - echo ""
+      - echo "===================================================="
+      - echo "Pre-installation Requirements"
+      - echo "===================================================="
+      - echo ""
+      - echo "- Edit .env.docker.local and provide your own configuration settings."
+      - echo "- Copy your SSL certificate files (docker.crt and docker.key) to the ssl-folder"
+      - echo ""
+      - echo "Have you completed the above pre-install requirements? (yes/no)"
+      - |
+        read answer && case $answer in
+          [Yy][Ee][Ss]) ;;
+          *) echo "Please complete the pre-install tasks before continuing."; exit 1;;
+        esac
+
+  _show_notes:
+    cmds:
+      - |
+        DOMAIN=$(grep ^COMPOSE_SERVER_DOMAIN= .env.docker.local | cut -d '=' -f 2)
+        echo ""
+        echo "===================================================="
+        echo "OS2display now is available via the URLs below"
+        echo "===================================================="
+        echo "Admin: https://$DOMAIN/admin"
+        echo "Screen: https://$DOMAIN/screen"
+        echo "===================================================="
+
+  _env_files:
+    cmds:
+      - |
+        if [ ! -f .env.local ]; then
+          echo ".env.local does not exist. Copying .env.example to .env.local..."
+          cp .env.example .env.local
+        fi
+      - |
+        if [ ! -f .env.docker.local ]; then
+          echo ".env.docker.local does not exist. Copying .env.docker.example to .env.docker.local..."
+          cp .env.docker.example .env.docker.local
+        fi
+
+  _dc_compile:
+    deps:
+      - _env_files
+    cmds:
+      - |
+        COMPOSE_FILES="-f docker-compose.server.yml"
+        if grep -q '^INTERNAL_DATABASE=true' .env.docker.local; then
+          COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.mariadb.yml"
+        fi
+        if grep -q '^INTERNAL_PROXY=true' .env.docker.local; then
+          COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.traefik.yml"
+        fi
+        docker compose --env-file .env.local --env-file .env.docker.local $COMPOSE_FILES config > docker-compose.yml
