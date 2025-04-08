@@ -128,10 +128,11 @@ tasks:
       - echo "Pre-installation Requirements"
       - echo "===================================================="
       - echo ""
-      - echo "- Edit .env.docker.local and provide your own configuration settings."
-      - echo "- Copy your SSL certificate files (docker.crt and docker.key) to the ssl-folder"
+      - echo "To proceed with the installation, ensure the following steps are completed:"
+      - echo "1. Update '.env.docker.local' with your domain name (replace all 5 instances) and set secure passwords."
+      - echo "2. Place your SSL certificate files ('docker.crt' and 'docker.key') in the 'traefik/ssl' directory."
       - echo ""
-      - echo "Have you completed the above pre-install requirements? (yes/no)"
+      - echo "Have you completed the above pre-installation steps? (yes/no)"
       - |
         read answer && case $answer in
           [Yy][Ee][Ss]) ;;
