@@ -1,41 +1,72 @@
-# OS2display docker server hosting
+# OS2display v2 Hosting and Deployment
 
-Basic docker based hosting setup for OS2display v.2
+This is a deployment tool designed for hosting the OS2display v2 application using Docker. It provides a Docker-based setup, pre-configured files, and task automation to simplify the deployment and management of the application.
 
-## Deployment
+## Prerequisites
 
-### Containers
+Before you begin, ensure you have the following installed on your system:
+1. **Docker**: Install Docker Engine (version 20.10 or later).
+2. **Docker Compose**: Use Docker Compose v2 (integrated with the `docker compose` command).
+3. **Task**: Install the Taskfile CLI tool. You can find installation instructions [here](https://taskfile.dev/#/installation).
 
-Change the tags in .env.docker.local to the tags of the containers you wish to deploy.
+Make sure your user has the necessary permissions to run Docker commands (e.g., being part of the `docker` group).
 
-E.g.
+### Check Prerequisites
 
-```dotenv
-COMPOSE_VERSION_API=2.0.0
-COMPOSE_VERSION_ADMIN=2.0.0
-COMPOSE_VERSION_CLIENT=2.0.0
+Run the following commands to verify that the prerequisites are installed:
+
+```bash
+# Check Docker installation
+docker --version
+
+# Check Docker Compose installation
+docker compose version
+
+# Check Taskfile CLI installation
+task --version
+```
+## Secure Mode Requirement
+
+This project can only run in secure mode using HTTPS (port 443). To ensure proper functionality, you must provide a valid domain name and an SSL certificate.
+
+### Steps to Configure Secure Mode:
+1. **Domain Name**: Use a fully qualified domain name (FQDN) that resolves to your server's IP address.
+2. **SSL Certificate**: Provide a valid SSL certificate and private key for the domain.
+   - Place the certificate file (`docker.crt`) and the private key file (`docker.key`) in the `traefik/ssl` directory.
+3. **Update Configuration**: Ensure the domain name is correctly configured in the `.env.docker.local` file.
+
+Without a valid domain name and SSL certificate, the project will not function as expected.
+
+## Available Tasks
+
+The project uses a `Taskfile.yml` to simplify common operations. Below is a list of the most important tasks you can run:
+
+### Installation and Setup
+- **`task install`**: Installs the project, pulls Docker images, sets up the database, and initializes the environment.
+- **`task reinstall`**: Reinstalls the project from scratch, removing all containers, volumes, and the database.
+- **`task up`**: Starts the environment without altering the existing state of the containers.
+- **`task down`**: Stops and removes all containers and volumes.
+
+### Tenant and User Management
+- **`task tenant_add`**: Adds a new tenant group. A tenant is a group of users that share the same configuration.
+- **`task user_add`**: Adds a new user (editor or admin) to a tenant.
+
+### Templates and Screen Layouts
+- **`task load_templates`**: Loads templates and screen layouts based on the configuration in `.env.docker.local`.
+
+### Maintenance
+- **`task logs`**: Follows the logs from the Docker containers.
+- **`task cc`**: Clears the cache in the application.
+
+### Pre-installation Notes
+Before running `task install`, ensure the following:
+1. Update `.env.docker.local` with your domain name (replace all 5 instances) and set secure passwords.
+2. Place your SSL certificate files (`docker.crt` and `docker.key`) in the `traefik/ssl` directory.
+
+For a full list of tasks, run:
+```bash
+task --list
 ```
 
-### Templates
 
-Import templates and screen layouts:
 
-#### Production
-
-In production run the script `load-templates-prod.sh` with the TEMPLATES_RELEASE environment variable set to the tag of
-the templates to load.
-
-E.g.
-
-```shell
-TEMPLATES_RELEASE=2.1.0 ./load-templates-prod.sh
-```
-
-#### Staging
-
-In staging run the script `load-templates-develop.sh`. This will load the templates from the develop branch of the
-template repository.
-
-```
-./load-templates-develop.sh
-```
