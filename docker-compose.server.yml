@@ -102,6 +102,7 @@ services:
       - APP_TOUCH_BUTTON_REGIONS=${APP_TOUCH_BUTTON_REGIONS}
       - APP_REJSEPLANEN_API_KEY=${APP_REJSEPLANEN_API_KEY}
       - APP_SHOW_SCREEN_STATUS=${APP_SHOW_SCREEN_STATUS}
+      - APP_PREVIEW_CLIENT=${APP_PREVIEW_CLIENT}
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=frontend"
