@@ -148,7 +148,7 @@ tasks:
         echo "OS2display now is available via the URLs below"
         echo "===================================================="
         echo "Admin: https://$DOMAIN/admin"
-        echo "Screen: https://$DOMAIN/screen"
+        echo "Screen: https://$DOMAIN/client"
         echo "===================================================="
 
   _env_files:
