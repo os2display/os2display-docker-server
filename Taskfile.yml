@@ -38,11 +38,18 @@ tasks:
       - task install
 
   down:
+    desc: Remove all containers
+    deps:
+      - stop
+    cmds:
+      - docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml down
+
+  purge:
     desc: Remove all containers and volumes
     deps:
       - stop
     cmds:
-      - docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml down -v
+      - docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml down --volumes --remove-orphans
 
   up:
     desc: Take the environment up without altering the existing state of the containers
@@ -177,3 +184,9 @@ tasks:
           COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.traefik.yml"
         fi
         docker compose --env-file .env.local --env-file .env.docker.local $COMPOSE_FILES config > docker-compose.yml
+
+        # Replace all occurrences of demo.os2display.dk with the value of COMPOSE_SERVER_DOMAIN
+        DOMAIN=$(grep ^COMPOSE_SERVER_DOMAIN= .env.docker.local | cut -d '=' -f 2)
+        if [ -n "$DOMAIN" ]; then
+          sed -i "s/demo\.os2display\.dk/$DOMAIN/g" docker-compose.yml
+        fi
