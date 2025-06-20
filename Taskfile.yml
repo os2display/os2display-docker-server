@@ -5,7 +5,20 @@ tasks:
   default:
     desc: The default task that shows help
     cmds:
-      - task --list
+      - echo "Available tasks (in preferred order):"
+      - echo "  install         Install the project"
+      - echo "  reinstall       Reinstall from scratch. WARNING Deletes the database!"
+      - echo "  up              Start the environment"
+      - echo "  down            Remove all containers"
+      - echo "  purge           Remove all containers and volumes. WARNING Deletes the database!"
+      - echo "  stop            Stop all containers"
+      - echo "  logs            Follow docker logs"
+      - echo "  cc              Clear the cache"
+      - echo "  tenant_add      Add a new tenant group"
+      - echo "  user_add        Add a new user"
+      - echo "  load_templates  Load templates and screen layouts"
+      - echo ""
+
 
   install:
     desc: Install the project
