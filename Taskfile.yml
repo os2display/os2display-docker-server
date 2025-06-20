@@ -136,7 +136,7 @@ tasks:
       - echo "===================================================="
       - echo ""
       - echo "To proceed with the installation, ensure the following steps are completed:"
-      - echo "1. Update '.env.docker.local' with your domain name (replace all 5 instances) and set secure passwords."
+      - echo "1. Update '.env.docker.local' with local settings and set secure passwords."
       - echo "2. Place your SSL certificate files ('docker.crt' and 'docker.key') in the 'traefik/ssl' directory."
       - echo ""
       - echo "Have you completed the above pre-installation steps? (yes/no)"
