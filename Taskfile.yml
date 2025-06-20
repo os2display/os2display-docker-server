@@ -64,6 +64,7 @@ tasks:
       - stop
     cmds:
       - docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml down
+      - rm -f docker-compose.yml .env.local
 
   purge:
     desc: Remove all containers and volumes
@@ -79,6 +80,7 @@ tasks:
         else
           echo "External network 'frontend' does not exist"
         fi
+      - rm -f docker-compose.yml .env.local
 
   up:
     desc: Take the environment up without altering the existing state of the containers
