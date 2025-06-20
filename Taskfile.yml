@@ -54,7 +54,7 @@ tasks:
   reinstall:
     desc: Reinstall from scratch. Removes the database, all containers, and volumes.
     deps:
-      - down
+      - purge
     cmds:
       - task install
 
