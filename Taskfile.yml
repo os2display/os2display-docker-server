@@ -85,11 +85,6 @@ tasks:
   up:
     desc: Take the environment up without altering the existing state of the containers
     cmds:
-      - |
-        if [ ! -f docker-compose.yml ]; then
-          echo "ERROR: docker-compose.yml not found. Please run 'task install' to set up the system before starting the environment."
-          exit 1
-        fi
       - task _dc_compile
       - docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml up -d
 
