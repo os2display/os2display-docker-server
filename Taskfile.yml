@@ -85,6 +85,12 @@ tasks:
   up:
     desc: Take the environment up without altering the existing state of the containers
     cmds:
+      - |
+        if [ ! -f docker-compose.yml ]; then
+          echo "ERROR: docker-compose.yml not found. Please run 'task install' to set up the system before starting the environment."
+          exit 1
+        fi
+      - task _dc_compile
       - docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml up -d
 
   stop:
@@ -192,10 +198,8 @@ tasks:
   _env_files:
     cmds:
       - |
-        if [ ! -f .env.local ]; then
-          echo ".env.local does not exist. Copying .env.example to .env.local..."
-          cp .env.example .env.local
-        fi
+        echo "Copying .env.example to .env.local..."
+        cp .env.example .env.local
       - |
         if [ ! -f .env.docker.local ]; then
           echo ".env.docker.local does not exist. Copying .env.docker.example to .env.docker.local..."
