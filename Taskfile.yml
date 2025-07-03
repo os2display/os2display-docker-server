@@ -38,7 +38,7 @@ tasks:
       - docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml pull
       - docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml up --force-recreate --detach --remove-orphans
       - echo "Waiting for database to be ready"
-      - sleep 10
+      - sleep 20
       - echo "Initialize the database"
       - docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml exec api bin/console doctrine:schema:create
       - echo "Clearing the cache"
