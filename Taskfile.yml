@@ -38,13 +38,13 @@ tasks:
       - docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml pull
       - docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml up --force-recreate --detach --remove-orphans
       - echo "Waiting for database to be ready"
-      - sleep 10
+      - sleep 20
       - echo "Initialize the database"
       - docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml exec api bin/console doctrine:schema:create
       - echo "Clearing the cache"
       - task cc
       - echo "Create jwt key pair"
-      - docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml exec --user 1000:1000 api bin/console lexik:jwt:generate-keypair --skip-if-exists
+      - docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml exec api bin/console lexik:jwt:generate-keypair --skip-if-exists
       - task tenant_add
       - echo "CREATE AN ADMIN USER. CHOOSE THE TENANT YOU JUST CREATED."
       - task user_add
@@ -160,74 +160,6 @@ tasks:
     cmds:
       - docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml exec api bin/console cache:clear
 
-  dev-setup-api:
-    desc: Set up development environment for display-api-service
-    cmds:
-      - |
-        echo "Setting up the development environment..."
-        VERSION=$(grep ^COMPOSE_VERSION_API= .env.docker.local | cut -d '=' -f 2)
-        if [ -z "$VERSION" ]; then
-          echo "Error: COMPOSE_VERSION_API is not set in .env.docker.local"
-          exit 1
-        fi
-        if [ ! -d "display-api-service" ]; then
-          echo "Cloning the os2display/display-api-service repository..."
-          git clone https://github.com/os2display/display-api-service.git
-        fi
-        cd display-api-service && git fetch --tags && git checkout tags/$VERSION -b $VERSION
-        echo "Development environment set up with tag $VERSION."
-
-  dev-sync-api:
-    desc: Sync files from display-api-service to the api container
-    cmds:
-      - |
-        echo "Syncing files from display-api-service to the api container..."
-        if [ ! -d "display-api-service" ]; then
-          echo "Error: The display-api-service folder does not exist. Please run 'task dev-setup-api' first."
-          exit 1
-        fi
-        CONTAINER_ID=$(docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml ps -q api)
-        if [ -z "$CONTAINER_ID" ]; then
-          echo "Error: The api container is not running. Please start it with 'task up'."
-          exit 1
-        fi
-        docker cp display-api-service/src/. $CONTAINER_ID:/var/www/html/src
-        echo "Src folder successfully synced to /var/www/html/src in the api container."
-
-  dev-setup-admin:
-    desc: Set up development environment for display-admin-client
-    cmds:
-      - |
-        echo "Setting up the development environment..."
-        VERSION=$(grep ^COMPOSE_VERSION_ADMIN= .env.docker.local | cut -d '=' -f 2)
-        if [ -z "$VERSION" ]; then
-          echo "Error: COMPOSE_VERSION_ADMIN is not set in .env.docker.local"
-          exit 1
-        fi
-        if [ ! -d "display-admin-client" ]; then
-          echo "Cloning the os2display/display-admin-client repository..."
-          git clone https://github.com/os2display/display-admin-client.git
-        fi
-        cd display-admin-client && git fetch --tags && git checkout tags/$VERSION -b $VERSION
-        echo "Development environment set up with tag $VERSION."
-
-  dev-sync-admin:
-    desc: Sync files from display-admin-client to the admin container
-    cmds:
-      - |
-        echo "Syncing files from display-admin-client to the admin container..."
-        if [ ! -d "display-admin-client" ]; then
-          echo "Error: The display-admin-client folder does not exist. Please run 'task dev-setup-admin' first."
-          exit 1
-        fi
-        CONTAINER_ID=$(docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml ps -q admin)
-        if [ -z "$CONTAINER_ID" ]; then
-          echo "Error: The admin container is not running. Please start it with 'task up'."
-          exit 1
-        fi
-        docker cp display-admin-client/src/. $CONTAINER_ID:/var/www/html/src
-        echo "Src folder successfully synced to /var/www/html/src in the admin container."
-        
   _show_preinstall_notes:
     cmds:
       - echo ""
@@ -288,3 +220,37 @@ tasks:
         if [ -n "$DOMAIN" ]; then
           sed -i "s/demo\.os2display\.dk/$DOMAIN/g" docker-compose.yml
         fi
+        
+  dev-setup-api:
+    desc: Set up development environment for display-api-service
+    cmds:
+      - |
+        echo "Setting up the development environment..."
+        VERSION=$(grep ^COMPOSE_VERSION_API= .env.docker.local | cut -d '=' -f 2)
+        if [ -z "$VERSION" ]; then
+          echo "Error: COMPOSE_VERSION_API is not set in .env.docker.local"
+          exit 1
+        fi
+        if [ ! -d "display-api-service" ]; then
+          echo "Cloning the os2display/display-api-service repository..."
+          git clone https://github.com/os2display/display-api-service.git
+        fi
+        cd display-api-service && git fetch --tags && git checkout tags/$VERSION -b $VERSION
+        echo "Development environment set up with tag $VERSION."
+
+  dev-sync-api:
+    desc: Sync files from display-api-service to the api container
+    cmds:
+      - |
+        echo "Syncing files from display-api-service to the api container..."
+        if [ ! -d "display-api-service" ]; then
+          echo "Error: The display-api-service folder does not exist. Please run 'task dev-setup-api' first."
+          exit 1
+        fi
+        CONTAINER_ID=$(docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml ps -q api)
+        if [ -z "$CONTAINER_ID" ]; then
+          echo "Error: The api container is not running. Please start it with 'task up'."
+          exit 1
+        fi
+        docker cp display-api-service/src/. $CONTAINER_ID:/var/www/html/src
+        echo "Src folder successfully synced to /var/www/html/src in the api container."
