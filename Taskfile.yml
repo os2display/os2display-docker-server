@@ -44,7 +44,7 @@ tasks:
       - echo "Clearing the cache"
       - task cc
       - echo "Create jwt key pair"
-      - docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml exec --user 1000:1000 api bin/console lexik:jwt:generate-keypair --skip-if-exists
+      - docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml exec api bin/console lexik:jwt:generate-keypair --skip-if-exists
       - task tenant_add
       - echo "CREATE AN ADMIN USER. CHOOSE THE TENANT YOU JUST CREATED."
       - task user_add
