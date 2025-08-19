@@ -25,6 +25,24 @@ docker compose version
 # Check Taskfile CLI installation
 task --version
 ```
+
+## Create the deploy-user
+Files inside the `os2display-api-service` container are owned by a user with UID 1042 and GID 1042. To prevent permission issues with bind mounts (the `media` and `jwt` volumes), it’s best to install the application using a user with the same UID and GID.
+
+To set this up on your server, create a new user (for example, `deploy`). You can choose a different username if you prefer, but make sure to assign UID and GID 1042.
+
+Here’s how to create the user:
+
+```bash
+# Create group and user with UID/GID 1042
+sudo groupadd -g 1042 deploy
+sudo useradd -u 1042 -g 1042 -m -s /bin/bash deploy
+sudo passwd deploy
+
+# Add the user to the docker group
+sudo usermod -aG docker deploy
+```
+
 ## Secure Mode Requirement
 
 This project can only run in secure mode using HTTPS (port 443). To ensure proper functionality, you must provide a valid domain name and an SSL certificate.
