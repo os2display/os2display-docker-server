@@ -133,7 +133,11 @@ tasks:
         echo "Using TEMPLATES_RELEASE=$TEMPLATES_RELEASE"
         echo "Using TEMPLATES=$TEMPLATES"
         for TEMPLATE in $TEMPLATES; do
-          CONFIG_URL="https://raw.githubusercontent.com/os2display/display-templates/refs/tags/$TEMPLATES_RELEASE/build/$TEMPLATE-config-main.json"
+          if [ "$TEMPLATES_RELEASE" = "develop" ]; then
+            CONFIG_URL="https://raw.githubusercontent.com/os2display/display-templates/refs/heads/$TEMPLATES_RELEASE/build/$TEMPLATE-config-main.json"
+          else
+            CONFIG_URL="https://raw.githubusercontent.com/os2display/display-templates/refs/tags/$TEMPLATES_RELEASE/build/$TEMPLATE-config-main.json"
+          fi
           echo "Loading template: $TEMPLATE"
           docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml exec --user deploy api bin/console app:template:load -p $CONFIG_URL
         done
@@ -145,7 +149,11 @@ tasks:
         fi
         echo "Using SCREEN_LAYOUTS=$SCREEN_LAYOUTS"
         for SCREEN_LAYOUT in $SCREEN_LAYOUTS; do
-          CONFIG_URL="https://raw.githubusercontent.com/os2display/display-templates/refs/tags/$TEMPLATES_RELEASE/src/screen-layouts/$SCREEN_LAYOUT.json"
+          if [ "$TEMPLATES_RELEASE" = "develop" ]; then
+            CONFIG_URL="https://raw.githubusercontent.com/os2display/display-templates/refs/heads/$TEMPLATES_RELEASE/src/screen-layouts/$SCREEN_LAYOUT.json"
+          else
+            CONFIG_URL="https://raw.githubusercontent.com/os2display/display-templates/refs/tags/$TEMPLATES_RELEASE/src/screen-layouts/$SCREEN_LAYOUT.json"
+          fi
           echo "Loading screen layout: $SCREEN_LAYOUT"
           docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml exec --user deploy api bin/console app:screen-layouts:load --update --cleanup-regions $CONFIG_URL
         done
