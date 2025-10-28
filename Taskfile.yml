@@ -262,3 +262,45 @@ tasks:
         fi
         docker cp display-api-service/src/. $CONTAINER_ID:/var/www/html/src
         echo "Src folder successfully synced to /var/www/html/src in the api container."
+
+  dev-logging:
+    desc: Configure development logging by replacing prod monolog config with dev config
+    cmds:
+      - |
+        echo "Configuring development logging..."
+        if [ ! -d "display-api-service" ]; then
+          echo "Error: The display-api-service folder does not exist. Please run 'task dev-setup-api' first."
+          exit 1
+        fi
+        
+        PROD_MONOLOG="display-api-service/config/packages/prod/monolog.yaml"
+        DEV_MONOLOG="display-api-service/config/packages/dev/monolog.yaml"
+        
+        if [ ! -f "$DEV_MONOLOG" ]; then
+          echo "Error: Dev monolog config file does not exist at $DEV_MONOLOG"
+          exit 1
+        fi
+        
+        if [ -f "$PROD_MONOLOG" ]; then
+          echo "Backing up existing prod monolog config..."
+          mv "$PROD_MONOLOG" "display-api-service/config/packages/prod/monolog-bak.yaml"
+          echo "Backed up $PROD_MONOLOG to monolog-bak.yaml"
+        fi
+        
+        echo "Copying dev monolog config to prod..."
+        cp "$DEV_MONOLOG" "$PROD_MONOLOG"
+        echo "Successfully copied $DEV_MONOLOG to $PROD_MONOLOG"
+        echo "Development logging configuration is now active."
+
+        echo "Syncing config changes to the api container..."
+        CONTAINER_ID=$(docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml ps -q api)
+        if [ -z "$CONTAINER_ID" ]; then
+          echo "Error: The api container is not running. Please start it with 'task up'."
+          exit 1
+        fi
+        docker cp display-api-service/config/. $CONTAINER_ID:/var/www/html/config
+        echo "Config folder successfully synced to /var/www/html/config in the api container."
+        
+        echo "Restarting api service..."
+        docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml restart api
+        echo "Api service restarted successfully."
