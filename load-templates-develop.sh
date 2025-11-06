@@ -2,6 +2,7 @@
 
 # app:template:load
 docker compose --env-file .env.docker.local -f docker-compose.server.yml exec --user deploy api bin/console app:template:load -p -t https://raw.githubusercontent.com/os2display/display-templates/develop/build/book-review-config-develop.json
+docker compose --env-file .env.docker.local -f docker-compose.server.yml exec --user deploy api bin/console app:template:load -p -t https://raw.githubusercontent.com/os2display/display-templates/develop/build/brnd-config-main.json
 docker compose --env-file .env.docker.local -f docker-compose.server.yml exec --user deploy api bin/console app:template:load -p -t https://raw.githubusercontent.com/os2display/display-templates/develop/build/calendar-config-develop.json
 docker compose --env-file .env.docker.local -f docker-compose.server.yml exec --user deploy api bin/console app:template:load -p -t https://raw.githubusercontent.com/os2display/display-templates/develop/build/contacts-config-develop.json
 docker compose --env-file .env.docker.local -f docker-compose.server.yml exec --user deploy api bin/console app:template:load -p -t https://raw.githubusercontent.com/os2display/display-templates/develop/build/iframe-config-develop.json
