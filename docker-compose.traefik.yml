@@ -1,4 +1,6 @@
 networks:
+  frontend:
+    external: true
   proxy:
     driver: bridge
     internal: true
@@ -26,7 +28,7 @@ services:
       - $PWD/traefik/traefik.yml:/traefik.yml:ro
       - $PWD/traefik/dynamic-conf.yaml:/config/dynamic-conf.yaml:ro
     networks:
-      - frontend
+      - ${TRAEFIK_FRONTEND_NETWORK:-frontend}
       - proxy
     labels:
       - "traefik.enable=true"
