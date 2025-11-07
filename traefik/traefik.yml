@@ -34,8 +34,8 @@ certificatesResolvers:
     acme:
       email: ${TRAEFIK_LETSENCRYPT_EMAIL}
       storage: /letsencrypt/acme.json
-      # See .env.traefik.example for more info
-      caServer: ${TRAEFIK_ACME_CA_SERVER:-https://acme-staging-v02.api.letsencrypt.org/directory}
+      # See .env.traefik.example for more info and stg/prod values
+      caServer: ${TRAEFIK_ACME_CA_SERVER}
       httpChallenge:
         entryPoint: web
 
