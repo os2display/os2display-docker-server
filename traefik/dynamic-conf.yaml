@@ -1,25 +1,6 @@
 http:
-  # Dashboard router with authentication
-  routers:
-    dashboard:
-      rule: "Host(`${TRAEFIK_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/dashboard`))"
-      service: api@internal
-      entryPoints:
-        - websecure
-      middlewares:
-        - dashboard-auth
-        - security-headers
-      tls:
-        certResolver: letsencrypt
-
   # Middlewares
   middlewares:
-    # Basic authentication for dashboard
-    dashboard-auth:
-      basicAuth:
-        users:
-          - "${TRAEFIK_DASHBOARD_AUTH}"
-
     # Security headers
     security-headers:
       headers:
@@ -59,6 +40,9 @@ tls:
       sniStrict: true
 
   # Custom certificates (if provided)
+  # Place your custom certificate files in traefik/ssl/ directory
+  # Traefik will only use these if the files exist
+  # If using Let's Encrypt, you can ignore this section or remove the files
   certificates:
-    - certFile: /certs/${TRAEFIK_CUSTOM_CERT_FILE:-custom.crt}
-      keyFile: /certs/${TRAEFIK_CUSTOM_KEY_FILE:-custom.key}
+    - certFile: /certs/custom.crt
+      keyFile: /certs/custom.key
