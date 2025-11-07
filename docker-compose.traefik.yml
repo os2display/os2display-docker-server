@@ -13,14 +13,23 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      - "8080:8080" # Dashboard
+    environment:
+      - TRAEFIK_DOMAIN=${TRAEFIK_DOMAIN}
+      - TRAEFIK_LETSENCRYPT_EMAIL=${TRAEFIK_LETSENCRYPT_EMAIL}
+      - TRAEFIK_DASHBOARD_AUTH=${TRAEFIK_DASHBOARD_AUTH}
+      - TRAEFIK_ACME_CA_SERVER=${TRAEFIK_ACME_CA_SERVER:-https://acme-v02.api.letsencrypt.org/directory}
+      - TRAEFIK_CUSTOM_CERT_FILE=${TRAEFIK_CUSTOM_CERT_FILE:-custom.crt}
+      - TRAEFIK_CUSTOM_KEY_FILE=${TRAEFIK_CUSTOM_KEY_FILE:-custom.key}
     volumes:
       - $PWD/traefik/ssl:/certs:ro
+      - $PWD/traefik/letsencrypt:/letsencrypt
       - $PWD/traefik/traefik.yml:/traefik.yml:ro
       - $PWD/traefik/dynamic-conf.yaml:/config/dynamic-conf.yaml:ro
     networks:
       - frontend
       - proxy
+    labels:
+      - "traefik.enable=true"
 
   socket-proxy:
     image: itkdev/docker-socket-proxy

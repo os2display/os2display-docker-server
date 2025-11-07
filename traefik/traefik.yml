@@ -1,27 +1,56 @@
-
 api:
   dashboard: true
-  insecure: true
-  debug: true
+  insecure: false
 
 entryPoints:
   web:
     address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+
   websecure:
     address: ":443"
     http:
       tls:
-        {}
+        certResolver: letsencrypt
+        options: modern@file
+    http3: {}
 
 providers:
   file:
     directory: /config
+    watch: true
   docker:
     endpoint: "tcp://socket-proxy:2375"
     exposedByDefault: false
+
+# Let's Encrypt configuration
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: ${TRAEFIK_LETSENCRYPT_EMAIL}
+      storage: /letsencrypt/acme.json
+      # See .env.traefik.example for more info
+      caServer: ${TRAEFIK_ACME_CA_SERVER:-https://acme-staging-v02.api.letsencrypt.org/directory}
+      httpChallenge:
+        entryPoint: web
 
 # https://doc.traefik.io/traefik/routing/services/#insecureskipverify
 serversTransport:
   insecureSkipVerify: true
 
+# Logging
+log:
+  level: INFO
+  format: json
+
+accessLog:
+  format: json
+  fields:
+    headers:
+      defaultMode: drop
 
