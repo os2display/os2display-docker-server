@@ -12,6 +12,9 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    env_file:
+      - path: .env.traefik
+        required: true
     ports:
       - "80:80"
       - "443:443"
@@ -20,8 +23,8 @@ services:
       - TRAEFIK_LETSENCRYPT_EMAIL=${TRAEFIK_LETSENCRYPT_EMAIL}
       - TRAEFIK_DASHBOARD_AUTH=${TRAEFIK_DASHBOARD_AUTH}
       - TRAEFIK_ACME_CA_SERVER=${TRAEFIK_ACME_CA_SERVER:-https://acme-v02.api.letsencrypt.org/directory}
-      - TRAEFIK_CUSTOM_CERT_FILE=${TRAEFIK_CUSTOM_CERT_FILE:-custom.crt}
-      - TRAEFIK_CUSTOM_KEY_FILE=${TRAEFIK_CUSTOM_KEY_FILE:-custom.key}
+      - TRAEFIK_CUSTOM_CERT_FILE=${TRAEFIK_CUSTOM_CERT_FILE:-docker.crt}
+      - TRAEFIK_CUSTOM_KEY_FILE=${TRAEFIK_CUSTOM_KEY_FILE:-docker.key}
     volumes:
       - $PWD/traefik/ssl:/certs:ro
       - $PWD/traefik/letsencrypt:/letsencrypt
