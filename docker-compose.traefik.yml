@@ -5,7 +5,7 @@ networks:
 
 services:
   traefik:
-    image: traefik:v3.2
+    image: traefik:latest
     container_name: traefik
     restart: unless-stopped
     security_opt:
