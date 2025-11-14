@@ -7,7 +7,7 @@ networks:
 
 services:
   traefik:
-    image: traefik:v3.5
+    image: traefik:v3.6
     container_name: traefik
     restart: unless-stopped
     security_opt:
@@ -18,18 +18,11 @@ services:
     ports:
       - "80:80"
       - "443:443"
-    environment:
-      - TRAEFIK_DOMAIN=${TRAEFIK_DOMAIN}
-      - TRAEFIK_LETSENCRYPT_EMAIL=${TRAEFIK_LETSENCRYPT_EMAIL}
-      - TRAEFIK_DASHBOARD_AUTH=${TRAEFIK_DASHBOARD_AUTH}
-      - TRAEFIK_ACME_CA_SERVER=${TRAEFIK_ACME_CA_SERVER:-https://acme-v02.api.letsencrypt.org/directory}
-      - TRAEFIK_CUSTOM_CERT_FILE=${TRAEFIK_CUSTOM_CERT_FILE:-docker.crt}
-      - TRAEFIK_CUSTOM_KEY_FILE=${TRAEFIK_CUSTOM_KEY_FILE:-docker.key}
     volumes:
       - $PWD/traefik/ssl:/certs:ro
       - $PWD/traefik/letsencrypt:/letsencrypt
       - $PWD/traefik/traefik.yml:/traefik.yml:ro
-      - $PWD/traefik/dynamic-conf.yaml:/config/dynamic-conf.yaml:ro
+      - $PWD/traefik/dynamic-conf-${TRAEFIK_CERT_PROVIDER:-letsencrypt}.yaml:/config/dynamic-conf.yaml:ro
     networks:
       - ${TRAEFIK_FRONTEND_NETWORK:-frontend}
       - proxy

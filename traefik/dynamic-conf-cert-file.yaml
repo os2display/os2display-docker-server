@@ -1,7 +1,5 @@
 http:
-  # Middlewares
   middlewares:
-    # Security headers
     security-headers:
       headers:
         frameDeny: true
@@ -16,14 +14,12 @@ http:
           X-Robots-Tag: "noindex,nofollow,nosnippet,noarchive,notranslate,noimageindex"
           server: ""
 
-    # HTTPS redirect middleware (for services that need it)
     https-redirect:
       redirectScheme:
         scheme: https
         permanent: true
 
 tls:
-  # Modern TLS configuration
   options:
     modern:
       minVersion: VersionTLS12
@@ -44,5 +40,5 @@ tls:
   # Traefik will only use these if the files exist
   # If using Let's Encrypt, you can ignore this section or remove the files
   certificates:
-    - certFile: /certs/{{ env "TRAEFIK_CUSTOM_CERT_FILE" }}
-      keyFile: /certs/{{ env "TRAEFIK_CUSTOM_KEY_FILE" }}
+    - certFile: "/certs/{{ env \"TRAEFIK_CUSTOM_CERT_FILE\" }}"
+      keyFile: "/certs/{{ env \"TRAEFIK_CUSTOM_KEY_FILE\" }}"

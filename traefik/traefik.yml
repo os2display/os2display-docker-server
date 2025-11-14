@@ -32,10 +32,10 @@ providers:
 certificatesResolvers:
   letsencrypt:
     acme:
-      email: ${TRAEFIK_LETSENCRYPT_EMAIL}
+      email: '{{ env "TRAEFIK_LETSENCRYPT_EMAIL" }}'
       storage: /letsencrypt/acme.json
       # See .env.traefik.example for more info and stg/prod values
-      caServer: ${TRAEFIK_ACME_CA_SERVER}
+      caServer: '{{ env "TRAEFIK_ACME_CA_SERVER" }}'
       httpChallenge:
         entryPoint: web
 
