@@ -40,5 +40,5 @@ tls:
   # Traefik will only use these if the files exist
   # If using Let's Encrypt, you can ignore this section or remove the files
   certificates:
-    - certFile: "/certs/{{ env \"TRAEFIK_CUSTOM_CERT_FILE\" }}"
-      keyFile: "/certs/{{ env \"TRAEFIK_CUSTOM_KEY_FILE\" }}"
+    - certFile: "/certs/{{ env \"SERVER_CUSTOM_CERT_FILE\" }}"
+      keyFile: "/certs/{{ env \"SERVER_CUSTOM_KEY_FILE\" }}"

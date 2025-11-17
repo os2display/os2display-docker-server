@@ -22,16 +22,16 @@ services:
       - $PWD/traefik/ssl:/certs:ro
       - $PWD/traefik/letsencrypt:/letsencrypt
       - $PWD/traefik/traefik.yml:/traefik.yml:ro
-      - $PWD/traefik/dynamic-conf-${TRAEFIK_CERT_PROVIDER:-letsencrypt}.yaml:/config/dynamic-conf.yaml:ro
+      - $PWD/traefik/dynamic-conf-${SERVER_CERT_PROVIDER:-letsencrypt}.yaml:/config/dynamic-conf.yaml:ro
     networks:
-      - ${TRAEFIK_FRONTEND_NETWORK:-frontend}
+      - ${SERVER_FRONTEND_NETWORK:-frontend}
       - proxy
     labels:
       - "traefik.enable=true"
       # Dashboard authentication
-      - "traefik.http.middlewares.dashboard-auth.basicauth.users=${TRAEFIK_DASHBOARD_AUTH}"
+      - "traefik.http.middlewares.dashboard-auth.basicauth.users=${SERVER_DASHBOARD_AUTH}"
       # Dashboard router
-      - "traefik.http.routers.dashboard.rule=Host(`${TRAEFIK_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/dashboard`))"
+      - "traefik.http.routers.dashboard.rule=Host(`${SERVER_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/dashboard`))"
       - "traefik.http.routers.dashboard.entrypoints=websecure"
       - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
       - "traefik.http.routers.dashboard.service=api@internal"
