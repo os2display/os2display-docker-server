@@ -59,7 +59,16 @@ tasks:
           echo ".env.traefik does not exist. Copying .env.traefik.example to .env.traefik..."
           cp .env.traefik.example .env.traefik
         fi
+        
+        # Ensure htpasswd is installed
+        if ! command -v htpasswd >/dev/null 2>&1; then
+          echo "Error: 'htpasswd' command not found."
+          echo "Please install it (usually from the 'apache2-utils' or 'httpd-tools' package) and try again."
+          exit 1
+        fi
+        
         echo ""
+        
         echo "Configure Traefik environment"
         echo "===================================================="
         printf "Enter server domain (e.g. example.com): "
