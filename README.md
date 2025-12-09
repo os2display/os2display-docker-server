@@ -43,13 +43,18 @@ sudo passwd deploy
 sudo usermod -aG docker deploy
 ```
 
-## Secure Mode Requirement
+## Traefik Configuration
 
-This project can only run in secure mode using HTTPS (port 443). To ensure proper functionality, you must provide a valid domain name and an SSL certificate.
+### Secure Mode Requirement
+
+This project can only run in secure mode using HTTPS (port 443). A Traefik reverse proxy will handle HTTPS using either
+* Let's encrypt certificates (default) 
+* Custom certificate/key files
 
 ### Steps to Configure Secure Mode:
 1. **Domain Name**: Use a fully qualified domain name (FQDN) that resolves to your server's IP address.
-2. **SSL Certificate**: Provide a valid SSL certificate and private key for the domain.
+2. **SSL Certificate**, either: 
+   - Let traefik generate a certificate using Let's Encrypt (default).
    - Place the certificate file (`docker.crt`) and the private key file (`docker.key`) in the `traefik/ssl` directory.
 3. **Update Configuration**: Ensure the domain name is correctly configured in the `.env.docker.local` file.
 
@@ -60,6 +65,7 @@ Without a valid domain name and SSL certificate, the project will not function a
 The project uses a `Taskfile.yml` to simplify common operations. Below is a list of the most important tasks you can run:
 
 ### Installation and Setup
+- **`task traefik_env`**: Configures Traefik to use Let's Encrypt certificates or custom certificates.
 - **`task install`**: Installs the project, pulls Docker images, sets up the database, and initializes the environment.
 - **`task reinstall`**: Reinstalls the project from scratch, removing all containers, volumes, and the database.
 - **`task up`**: Starts the environment without altering the existing state of the containers.

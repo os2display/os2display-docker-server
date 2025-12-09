@@ -51,6 +51,56 @@ tasks:
       - task load_templates
       - task _show_notes
 
+  traefik_env:
+    desc: Setup .env.traefik (domain, email, dashboard auth)
+    cmds:
+      - |
+        if [ ! -f .env.traefik ]; then
+          echo ".env.traefik does not exist. Copying .env.traefik.example to .env.traefik..."
+          cp .env.traefik.example .env.traefik
+        fi
+        
+        # Ensure htpasswd is installed
+        if ! command -v htpasswd >/dev/null 2>&1; then
+          echo "Error: 'htpasswd' command not found."
+          echo "Please install it (usually from the 'apache2-utils' or 'httpd-tools' package) and try again."
+          exit 1
+        fi
+        
+        echo ""
+        
+        echo "Configure Traefik environment"
+        echo "===================================================="
+        printf "Enter server domain (e.g. example.com): "
+        read SERVER_DOMAIN
+        printf "Enter email for Let's Encrypt (e.g. admin@example.com): "
+        read TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL
+        printf "Enter Traefik dashboard/admin username: "
+        read SERVER_DASHBOARD_USERNAME
+        printf "Enter Traefik dashboard/admin password: "
+        read -s SERVER_DASHBOARD_PASSWORD
+
+        # Generate htpasswd entry (username:hash)
+        HTPASSWD_RAW=$(htpasswd -nb "${SERVER_DASHBOARD_USERNAME}" "${SERVER_DASHBOARD_PASSWORD}")
+        
+        # Escape characters that break sed/env ($, /, &)
+        HTPASSWD_ESCAPED=$(printf '%s\n' "$HTPASSWD_RAW" \
+          | sed -e 's/[\/&]/\\&/g' -e 's/\$/\\$/g')
+
+        # Update variables in .env.traefik
+        sed -i "s/^SERVER_DOMAIN=.*/SERVER_DOMAIN=${SERVER_DOMAIN}/" .env.traefik
+        sed -i "s/^TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL=.*/TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL=${TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL}/" .env.traefik
+        sed -i "s/^SERVER_DASHBOARD_AUTH=.*/SERVER_DASHBOARD_AUTH=${HTPASSWD_ESCAPED}/" .env.traefik
+
+        echo "===================================================="
+        echo ".env.traefik has been updated."
+        echo "Domain:   ${SERVER_DOMAIN}"
+        echo "Email:    ${TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL}"
+        echo "User:     ${SERVER_DASHBOARD_USERNAME}"
+        echo "Password: (hidden)"
+        echo "Auth:     (htpasswd line stored in SERVER_DASHBOARD_AUTH)"
+        echo "===================================================="
+
   reinstall:
     desc: Reinstall from scratch. Removes the database, all containers, and volumes.
     deps:
@@ -207,6 +257,11 @@ tasks:
         if [ ! -f .env.docker.local ]; then
           echo ".env.docker.local does not exist. Copying .env.docker.example to .env.docker.local..."
           cp .env.docker.example .env.docker.local
+        fi
+      - |
+        if [ ! -f .env.traefik ]; then
+          echo ".env.traefik does not exist. Copying .env.traefik.example to .env.traefik..."
+          cp .env.traefik.example .env.traefik
         fi
 
   _dc_compile:
