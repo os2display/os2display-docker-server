@@ -31,7 +31,7 @@ services:
       # Dashboard authentication
       - "traefik.http.middlewares.dashboard-auth.basicauth.users=${SERVER_DASHBOARD_AUTH}"
       # Dashboard router
-      - "traefik.http.routers.dashboard.rule=Host(`${SERVER_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/dashboard`))"
+      - "traefik.http.routers.dashboard.rule=Host(`${SERVER_DOMAIN}`) && PathPrefix(`/treafik/dashboard`)"
       - "traefik.http.routers.dashboard.entrypoints=websecure"
       - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
       - "traefik.http.routers.dashboard.service=api@internal"
