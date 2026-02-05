@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.1.2
+
+- Bump os2display version from 2.5.1 to 2.6.0. Client updated from 2.2.1 to 2.3.0.
+- Update TASK_TEMPLATES in .env.docker.example to include 'brnd'
+- Bring CHANGELOG.md up-to-date with mensions of version v1.1.0 and v1.1.1
+- Update CHANGELOG.md
+
 ## v1.1.1
 
 - Assume install by user where UID and GID is1042. The README contains further details.
