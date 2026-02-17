@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased]
+
+  - Add new task backup_db to backup the default internal mariadb
+
 ## v1.1.2
 
 - Bump os2display version from 2.5.1 to 2.6.0. Client updated from 2.2.1 to 2.3.0.

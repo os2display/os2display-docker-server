@@ -1,0 +1,230 @@
+name: os2display
+services:
+  admin:
+    environment:
+      API_PATH: /
+      APP_ADMIN_CLIENT_PATH: /admin
+      APP_PREVIEW_CLIENT: ""
+      APP_REJSEPLANEN_API_KEY: ""
+      APP_SHOW_SCREEN_STATUS: ""
+      APP_TOUCH_BUTTON_REGIONS: "true"
+    image: itkdev/os2display-admin-client:2.6.0
+    labels:
+      traefik.docker.network: frontend
+      traefik.enable: "true"
+      traefik.http.middlewares.redirect-to-https.redirectscheme.scheme: https
+      traefik.http.routers.adminos2display-http.entrypoints: web
+      traefik.http.routers.adminos2display-http.middlewares: redirect-to-https
+      traefik.http.routers.adminos2display-http.rule: Host(`os2display-devs.sonderborg.dk`) && PathPrefix(`/admin`)
+      traefik.http.routers.adminos2display.entrypoints: websecure
+      traefik.http.routers.adminos2display.rule: Host(`os2display-devs.sonderborg.dk`) && PathPrefix(`/admin`)
+    networks:
+      app: null
+      frontend: null
+    restart: unless-stopped
+  api:
+    environment:
+      APP_CALENDAR_API_FEED_SOURCE_CACHE_EXPIRE_SECONDS: ""
+      APP_CALENDAR_API_FEED_SOURCE_CUSTOM_MAPPINGS: ""
+      APP_CALENDAR_API_FEED_SOURCE_DATE_FORMAT: ""
+      APP_CALENDAR_API_FEED_SOURCE_DATE_TIMEZONE: ""
+      APP_CALENDAR_API_FEED_SOURCE_EVENT_ENDPOINT: ""
+      APP_CALENDAR_API_FEED_SOURCE_EVENT_MODIFIERS: ""
+      APP_CALENDAR_API_FEED_SOURCE_LOCATION_ENDPOINT: ""
+      APP_CALENDAR_API_FEED_SOURCE_RESOURCE_ENDPOINT: ""
+      APP_CORS_ALLOW_ORIGIN: ^https?://(localhost|127\.0\.0\.1)(:[0-9]+)?$$
+      APP_DATABASE_URL: mysql://db:db@mariadb:3306/db?serverVersion=mariadb-10.11.11
+      APP_DEFAULT_DATE_FORMAT: Y-m-d\TH:i:s.v\Z
+      APP_ENV: prod
+      APP_EXTERNAL_OIDC_CLAIM_ID: ""
+      APP_EXTERNAL_OIDC_CLIENT_ID: ""
+      APP_EXTERNAL_OIDC_CLIENT_SECRET: ""
+      APP_EXTERNAL_OIDC_HASH_SALT: ""
+      APP_EXTERNAL_OIDC_LEEWAY: ""
+      APP_EXTERNAL_OIDC_METADATA_URL: ""
+      APP_EXTERNAL_OIDC_REDIRECT_URI: ""
+      APP_INTERNAL_OIDC_CLIENT_ID: Sonderborg-OS2display
+      APP_INTERNAL_OIDC_CLIENT_SECRET: 7bdf9007-9518-4f1b-a0b5-4a42db1f58b9
+      APP_INTERNAL_OIDC_LEEWAY: "30"
+      APP_INTERNAL_OIDC_METADATA_URL: https://adgang-idp.sonderborg.dk/.well-known/openid-configuration
+      APP_INTERNAL_OIDC_REDIRECT_URI: https://os2display.sonderborg.dk/admin
+      APP_JWT_PASSPHRASE: pleasechangethistoo
+      APP_JWT_REFRESH_TOKEN_TTL: "2592000"
+      APP_JWT_SCREEN_REFRESH_TOKEN_TTL: ""
+      APP_JWT_SCREEN_TOKEN_TTL: ""
+      APP_JWT_TOKEN_TTL: "3600"
+      APP_KEY_VAULT_JSON: '{}'
+      APP_REDIS_CACHE_DSN: redis://redis:6379/0
+      APP_REDIS_CACHE_PREFIX: DisplayApiService
+      APP_SECRET: pleasuchangethis
+      APP_TRACK_SCREEN_INFO: ""
+      APP_TRACK_SCREEN_INFO_UPDATE_INTERVAL_SECONDS: ""
+      APP_TRUSTED_PROXIES: 127.0.0.1,REMOTE_ADDR
+      PHP_MAX_EXECUTION_TIME: "30"
+      PHP_MEMORY_LIMIT: 128M
+      PHP_OPCACHE_VALIDATE_TIMESTAMPS: "0"
+      PHP_PM_MAX_CHILDREN: "16"
+      PHP_POST_MAX_SIZE: 140M
+      PHP_TIMEZONE: UTC
+      PHP_UPLOAD_MAX_FILESIZE: 128M
+    image: itkdev/os2display-api-service:2.6.0
+    networks:
+      app: null
+    restart: unless-stopped
+    volumes:
+      - type: bind
+        source: /home/deploy/vanilla/os2display-docker-server/jwt
+        target: /var/www/html/config/jwt
+        bind:
+          create_host_path: true
+      - type: bind
+        source: /home/deploy/vanilla/os2display-docker-server/media
+        target: /var/www/html/public/media
+        bind:
+          create_host_path: true
+  client:
+    environment:
+      APP_API_AUTHENTICATION_ENDPOINT: https://os2display-devs.sonderborg.dk/v1/authentication/screen
+      APP_API_AUTHENTICATION_REFRESH_ENDPOINT: https://os2display-devs.sonderborg.dk/v1/authentication/token/refresh
+      APP_API_ENDPOINT: https://os2display-devs.sonderborg.dk
+      APP_API_PATH: https://os2display-devs.sonderborg.dk
+      APP_DATA_PULL_INTERVAL: "90000"
+      APP_DEBUG: "false"
+      APP_SCHEDULING_INTERVAL: "60000"
+      APP_SCREEN_CLIENT_PATH: /client
+    image: itkdev/os2display-client:2.3.0
+    labels:
+      traefik.docker.network: frontend
+      traefik.enable: "true"
+      traefik.http.middlewares.redirect-to-https.redirectscheme.scheme: https
+      traefik.http.routers.clientos2display-http.entrypoints: web
+      traefik.http.routers.clientos2display-http.middlewares: redirect-to-https
+      traefik.http.routers.clientos2display-http.rule: Host(`os2display-devs.sonderborg.dk`) && PathPrefix(`/client`)
+      traefik.http.routers.clientos2display.entrypoints: websecure
+      traefik.http.routers.clientos2display.rule: Host(`os2display-devs.sonderborg.dk`) && PathPrefix(`/client`)
+    networks:
+      app: null
+      frontend: null
+    restart: unless-stopped
+  mariadb:
+    environment:
+      MARIADB_DATABASE: db
+      MARIADB_PASSWORD: db
+      MARIADB_ROOT_PASSWORD: dbrootpassword
+      MARIADB_USER: db
+    image: mariadb:10.11.11
+    networks:
+      app: null
+    restart: unless-stopped
+    volumes:
+      - type: volume
+        source: mariadb
+        target: /var/lib/mysql
+        volume: {}
+  nginx-api:
+    depends_on:
+      api:
+        condition: service_started
+        required: true
+    environment:
+      NGINX_FPM_UPLOAD_MAX: 140M
+      PHP_FPM_SERVER: api
+    image: itkdev/os2display-api-service-nginx:2.6.0
+    labels:
+      traefik.docker.network: frontend
+      traefik.enable: "true"
+      traefik.http.middlewares.redirect-to-admin.redirectregex.regex: ^https:\/\/([^\/]+)\/?$$
+      traefik.http.middlewares.redirect-to-admin.redirectregex.replacement: https://$$1/admin
+      traefik.http.middlewares.redirect-to-https.redirectscheme.scheme: https
+      traefik.http.routers.apios2display-http.entrypoints: web
+      traefik.http.routers.apios2display-http.middlewares: redirect-to-https
+      traefik.http.routers.apios2display-http.rule: Host(`os2display-devs.sonderborg.dk`)
+      traefik.http.routers.apios2display.entrypoints: websecure
+      traefik.http.routers.apios2display.middlewares: redirect-to-admin
+      traefik.http.routers.apios2display.rule: Host(`os2display-devs.sonderborg.dk`)
+    networks:
+      app: null
+      frontend: null
+    restart: unless-stopped
+    volumes:
+      - type: bind
+        source: /home/deploy/vanilla/os2display-docker-server/media
+        target: /var/www/html/public/media
+        bind:
+          create_host_path: true
+  redis:
+    image: redis:6
+    networks:
+      app: null
+    restart: unless-stopped
+  socket-proxy:
+    container_name: socket-proxy
+    environment:
+      CONTAINERS: "1"
+    image: itkdev/docker-socket-proxy
+    networks:
+      proxy: null
+    restart: unless-stopped
+    user: root
+    volumes:
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+        read_only: true
+        bind:
+          create_host_path: true
+  traefik:
+    container_name: traefik
+    image: traefik:latest
+    networks:
+      frontend: null
+      proxy: null
+    ports:
+      - mode: ingress
+        target: 80
+        published: "80"
+        protocol: tcp
+      - mode: ingress
+        target: 443
+        published: "443"
+        protocol: tcp
+      - mode: ingress
+        target: 8080
+        published: "8080"
+        protocol: tcp
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - type: bind
+        source: /home/deploy/vanilla/os2display-docker-server/traefik/ssl
+        target: /certs
+        read_only: true
+        bind:
+          create_host_path: true
+      - type: bind
+        source: /home/deploy/vanilla/os2display-docker-server/traefik/traefik.yml
+        target: /traefik.yml
+        read_only: true
+        bind:
+          create_host_path: true
+      - type: bind
+        source: /home/deploy/vanilla/os2display-docker-server/traefik/dynamic-conf.yaml
+        target: /config/dynamic-conf.yaml
+        read_only: true
+        bind:
+          create_host_path: true
+networks:
+  app:
+    name: os2display_app
+    driver: bridge
+  frontend:
+    name: frontend
+    external: true
+  proxy:
+    name: os2display_proxy
+    driver: bridge
+    internal: true
+volumes:
+  mariadb:
+    name: os2display_mariadb

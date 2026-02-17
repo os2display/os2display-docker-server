@@ -17,6 +17,7 @@ tasks:
       - echo "  tenant_add      Add a new tenant group"
       - echo "  user_add        Add a new user"
       - echo "  load_templates  Load templates and screen layouts"
+      - echo "  backup_db       Performs a database dump, if you use the default internal mariadb."
       - echo ""
 
 
@@ -167,6 +168,24 @@ tasks:
     desc: Clear the cache
     cmds:
       - docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml exec api bin/console cache:clear
+
+  backup_db:
+    desc: Perform a database dump, if you use the default internal mariadb. The dump file will be saved in the 'db_backups' directory with a timestamp in the filename.
+    cmds:
+      - |
+        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+        DB_BACKUP_DIR=$(pwd)/db_backups
+        FILENAME=$DB_BACKUP_DIR/db_backup_$TIMESTAMP.sql
+        echo "Performing database backup..."
+        mkdir -p $DB_BACKUP_DIR  # Ensure the backup directory exists
+        DB_USER=$(grep ^MARIADB_USER= .env.docker.local | cut -d '=' -f 2)
+        DB_NAME=$(grep ^MARIADB_DATABASE= .env.docker.local | cut -d '=' -f 2)
+        DB_PASSWORD=$(grep ^MARIADB_PASSWORD= .env.docker.local | cut -d '=' -f 2)
+        echo "Using database user: $DB_USER and database name: $DB_NAME"
+        docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml exec mariadb mysqldump -u $DB_USER -p$DB_PASSWORD $DB_NAME > $FILENAME
+        if [ $? -eq 0 ]; then
+          echo "Database backup saved to $FILENAME"
+        fi
 
   _show_preinstall_notes:
     cmds:
