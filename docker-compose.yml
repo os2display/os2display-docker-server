@@ -10,7 +10,7 @@ networks:
 
 services:
   os2display:
-    image: itkdev/os2display-api-service:${OS2DISPLAY_VERSION_API}
+    image: ghcr.io/os2display/display-api-service:${OS2DISPLAY_VERSION_API}
     restart: unless-stopped
     networks:
       - app
@@ -29,7 +29,7 @@ services:
       - ./media:/var/www/html/public/media:rw
 
   nginx-api:
-    image: itkdev/os2display-api-service-nginx:${OS2DISPLAY_VERSION_API}
+    image: ghcr.io/os2display/display-api-service-nginx:${OS2DISPLAY_VERSION_API}
     restart: unless-stopped
     networks:
       - app

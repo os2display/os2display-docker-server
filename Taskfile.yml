@@ -9,19 +9,28 @@ tasks:
     desc: The default task that shows help
     cmds:
       - echo "Available tasks (in preferred order):"
-      - echo "  install         Install the project"
-      - echo "  reinstall       Reinstall from scratch. WARNING Deletes the database!"
-      - echo "  update          Pull updated images, recreate containers, run migrations"
-      - echo "  up              Start the environment"
-      - echo "  down            Remove all containers"
-      - echo "  purge           Remove all containers and volumes. WARNING Deletes the database!"
-      - echo "  stop            Stop all containers"
-      - echo "  logs            Follow docker logs"
-      - echo "  cc              Clear the cache"
-      - echo "  tenant_add      Add a new tenant group"
-      - echo "  user_add        Add a new user"
-      - echo "  load_templates  Load templates and screen layouts"
-      - echo "  traefik_env     Setup .env.traefik (domain, email, dashboard auth)"
+      - echo ""
+      - echo "  Bootstrap"
+      - echo "    env:init        Bootstrap .env.local from the API image"
+      - echo "    env:diff        Compare .env.local to the example shipped in the image"
+      - echo "    env:migrate     Convert a 2.x .env.docker.local to a 3.x .env.local"
+      - echo "    traefik_env     Setup .env.traefik (domain, email, dashboard auth)"
+      - echo ""
+      - echo "  Lifecycle"
+      - echo "    install         Install the project"
+      - echo "    reinstall       Reinstall from scratch. WARNING Deletes the database!"
+      - echo "    update          Pull updated images, recreate containers, run migrations"
+      - echo "    up              Start the environment"
+      - echo "    down            Remove all containers"
+      - echo "    purge           Remove all containers and volumes. WARNING Deletes the database!"
+      - echo "    stop            Stop all containers"
+      - echo ""
+      - echo "  Operations"
+      - echo "    logs            Follow docker logs"
+      - echo "    cc              Clear the cache"
+      - echo "    tenant_add      Add a new tenant group"
+      - echo "    user_add        Add a new user"
+      - echo "    load_templates  Install bundled templates and screen layouts"
       - echo ""
 
   install:
@@ -30,7 +39,7 @@ tasks:
       - sh: '[ -f .env ]'
         msg: ".env missing — copy .env.example to .env, edit it, then re-run."
       - sh: '[ -f .env.local ]'
-        msg: ".env.local missing — copy .env.local.example to .env.local, edit it, then re-run."
+        msg: ".env.local missing — run 'task env:init' to bootstrap from the image, edit it, then re-run."
     deps:
       - _env_files
     cmds:
@@ -47,8 +56,8 @@ tasks:
       - "{{.COMPOSE}} up --force-recreate --detach --remove-orphans"
       - echo "Waiting for database to be ready"
       - sleep 20
-      - echo "Initialize the database"
-      - "{{.COMPOSE}} exec os2display bin/console doctrine:schema:create"
+      - echo "Run database migrations and required updates"
+      - "{{.COMPOSE}} exec os2display bin/console app:update"
       - echo "Clearing the cache"
       - task cc
       - echo "Create jwt key pair"
@@ -109,6 +118,57 @@ tasks:
         echo "Auth:     (htpasswd line stored in SERVER_DASHBOARD_AUTH)"
         echo "===================================================="
 
+  env:init:
+    desc: Bootstrap .env.local from the API image (run once on first install)
+    preconditions:
+      - sh: '[ -f .env ]'
+        msg: ".env missing — copy .env.example to .env first."
+      - sh: '! [ -f .env.local ] || [ "${FORCE:-0}" = "1" ]'
+        msg: ".env.local already exists. Use 'task env:diff' to compare, or set FORCE=1 to overwrite."
+    cmds:
+      - |
+        VERSION=$(grep ^OS2DISPLAY_VERSION_API= .env | cut -d= -f2)
+        IMAGE="ghcr.io/os2display/display-api-service:${VERSION}"
+        docker pull "$IMAGE"
+        docker run --rm --entrypoint sh "$IMAGE" -c 'cat /var/www/html/.env' > .env.local
+        echo ".env.local created from $IMAGE."
+        echo "Edit it to set APP_SECRET, JWT_PASSPHRASE, DATABASE_URL, then run 'task install'."
+
+  env:diff:
+    desc: Compare .env.local against the example shipped in the current API image
+    preconditions:
+      - sh: '[ -f .env ]'
+        msg: ".env missing — copy .env.example to .env first."
+      - sh: '[ -f .env.local ]'
+        msg: ".env.local missing — run 'task env:init' first."
+    cmds:
+      - |
+        VERSION=$(grep ^OS2DISPLAY_VERSION_API= .env | cut -d= -f2)
+        IMAGE="ghcr.io/os2display/display-api-service:${VERSION}"
+        tmp=$(mktemp)
+        docker run --rm --entrypoint sh "$IMAGE" -c 'cat /var/www/html/.env' > "$tmp"
+        diff -u .env.local "$tmp" || true
+        rm -f "$tmp"
+
+  env:migrate:
+    desc: Convert a 2.x .env.docker.local into a 3.x-shaped .env.local.migrated (review, then mv into place)
+    cmds:
+      - |
+        if [ -f .env.docker.local ]; then
+          SRC=.env.docker.local
+        elif [ -f .env.local ]; then
+          SRC=.env.local
+        else
+          echo "Error: neither .env.docker.local nor .env.local exists."
+          exit 1
+        fi
+        OUT=.env.local.migrated
+        # Strip APP_ prefix from every key except APP_ENV and APP_SECRET (those stay).
+        sed -E '/^APP_(ENV|SECRET)=/!s/^APP_([A-Z_][A-Z0-9_]*=)/\1/' "$SRC" > "$OUT"
+        echo "Wrote $OUT (from $SRC)."
+        echo "Review with: diff -u $SRC $OUT"
+        echo "Apply with:  mv $OUT .env.local"
+
   reinstall:
     desc: Reinstall from scratch. Removes the database, all containers, and volumes.
     deps:
@@ -117,13 +177,13 @@ tasks:
       - task install
 
   update:
-    desc: Pull updated images, recreate containers, run database migrations
+    desc: Pull updated images, recreate containers, run migrations
     deps:
       - _env_files
     cmds:
       - "{{.COMPOSE}} pull"
       - "{{.COMPOSE}} up --force-recreate --detach --remove-orphans"
-      - "{{.COMPOSE}} exec --user deploy os2display bin/console doctrine:migrations:migrate --no-interaction"
+      - "{{.COMPOSE}} exec --user deploy os2display bin/console app:update"
       - echo "NB! Remember to load templates if they have changed (task load_templates)."
 
   down:
@@ -184,46 +244,10 @@ tasks:
       - "{{.COMPOSE}} exec -T os2display bin/console app:user:add"
 
   load_templates:
-    desc: Load templates and screen layouts
+    desc: Install bundled templates and screen layouts (--all --update)
     cmds:
-      - |
-        TEMPLATES_RELEASE=$(grep ^TASK_VERSION_TEMPLATES= .env | cut -d '=' -f 2)
-        TEMPLATES=$(grep ^TASK_TEMPLATES= .env | cut -d '=' -f 2 | tr -d ' "' | tr ',' ' ')
-        if [ -z "$TEMPLATES_RELEASE" ]; then
-          echo "Error: TASK_VERSION_TEMPLATES is not set in .env"
-          exit 1
-        fi
-        if [ -z "$TEMPLATES" ]; then
-          echo "Error: TASK_TEMPLATES is not set or empty in .env"
-          exit 1
-        fi
-        echo "Using TEMPLATES_RELEASE=$TEMPLATES_RELEASE"
-        echo "Using TEMPLATES=$TEMPLATES"
-        for TEMPLATE in $TEMPLATES; do
-          if [ "$TEMPLATES_RELEASE" = "develop" ]; then
-            CONFIG_URL="https://raw.githubusercontent.com/os2display/display-templates/refs/heads/$TEMPLATES_RELEASE/build/$TEMPLATE-config-main.json"
-          else
-            CONFIG_URL="https://raw.githubusercontent.com/os2display/display-templates/refs/tags/$TEMPLATES_RELEASE/build/$TEMPLATE-config-main.json"
-          fi
-          echo "Loading template: $TEMPLATE"
-          {{.COMPOSE}} exec --user deploy os2display bin/console app:template:load -p $CONFIG_URL
-        done
-
-        SCREEN_LAYOUTS=$(grep ^TASK_SCREEN_LAYOUTS= .env | cut -d '=' -f 2 | tr -d ' "' | tr ',' ' ')
-        if [ -z "$SCREEN_LAYOUTS" ]; then
-          echo "Error: TASK_SCREEN_LAYOUTS is not set or empty in .env"
-          exit 1
-        fi
-        echo "Using SCREEN_LAYOUTS=$SCREEN_LAYOUTS"
-        for SCREEN_LAYOUT in $SCREEN_LAYOUTS; do
-          if [ "$TEMPLATES_RELEASE" = "develop" ]; then
-            CONFIG_URL="https://raw.githubusercontent.com/os2display/display-templates/refs/heads/$TEMPLATES_RELEASE/src/screen-layouts/$SCREEN_LAYOUT.json"
-          else
-            CONFIG_URL="https://raw.githubusercontent.com/os2display/display-templates/refs/tags/$TEMPLATES_RELEASE/src/screen-layouts/$SCREEN_LAYOUT.json"
-          fi
-          echo "Loading screen layout: $SCREEN_LAYOUT"
-          {{.COMPOSE}} exec --user deploy os2display bin/console app:screen-layouts:load --update --cleanup-regions $CONFIG_URL
-        done
+      - "{{.COMPOSE}} exec --user deploy os2display bin/console app:templates:install --all --update"
+      - "{{.COMPOSE}} exec --user deploy os2display bin/console app:screen-layouts:install --all --update --cleanupRegions"
 
   logs:
     desc: Follow docker logs from the containers
