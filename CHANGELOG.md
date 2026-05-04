@@ -91,6 +91,9 @@ v3 image's env contract. Skim the **Migration from 2.x** section at the bottom b
   for the `./media` and `./jwt` bind mounts. Added a hint about debugging broken thumbnails.
 - README "Upgrading the bundled MariaDB across a major version" section with the full recipe and
   rollback path via the gzipped dump.
+- README "Image registries and authentication" section with the registry inventory (3 images on
+  GHCR, 5 on Docker Hub), Docker Hub anon rate-limit guidance, GHCR auth recipe (PAT and `gh`
+  variants), and a `docker/login-action` snippet for CI if one of the GHCR images flips private.
 
 ### Migration from 2.x
 
