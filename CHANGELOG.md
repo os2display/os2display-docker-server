@@ -2,6 +2,21 @@
 
 ## [Unreleased] — release/3.0.0
 
+### Added
+
+- Global JSON-file log rotation via `x-logging` anchor (10MB × 3 files per service). Applied to every service so a runaway container can't fill the host disk.
+- Healthchecks on `os2display` (PHP TCP probe to fpm 9000), `nginx-api` (`wget /health`), `redis` (`redis-cli ping`), and `mariadb` (`healthcheck.sh --connect --innodb_initialized`). `nginx-api.depends_on.os2display.condition: service_healthy` so `task install` actually waits for fpm before declaring the stack up.
+
+### Changed
+
+- Pinned `redis` to `7.4-alpine` (was floating `redis:6`). Added `--maxmemory 256mb --maxmemory-policy allkeys-lru --save 60 1000 --appendonly yes` to `command:` so the cache has a memory ceiling, an eviction policy, and persistence to a named `redis-data` volume.
+- Bumped `mariadb` from `10.11.11` to `10.11.16` (current 10.11 LTS patch).
+- nginx env-var contract aligned with the v3 image: `NGINX_FPM_UPLOAD_MAX` → `NGINX_MAX_BODY_SIZE`. The obsolete `PHP_FPM_SERVER` override removed (image's `NGINX_FPM_SERVICE=os2display` default is correct).
+
+### Documentation
+
+- README documents the UID 1042 (deploy, api) / UID 101 (nginx-unprivileged) permission contract for the `./media` and `./jwt` bind mounts. Added a hint about debugging broken thumbnails.
+
 ### Fixed
 
 - Traefik dashboard `PathPrefix` was misspelled `/treafik/dashboard`, so the dashboard router never matched. Corrected to `/traefik/dashboard`.

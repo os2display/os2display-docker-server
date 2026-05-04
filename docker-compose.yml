@@ -1,3 +1,9 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 networks:
   frontend:
     external: true
@@ -12,6 +18,7 @@ services:
   os2display:
     image: ghcr.io/os2display/display-api-service:${OS2DISPLAY_VERSION_API}
     restart: unless-stopped
+    logging: *default-logging
     networks:
       - app
     env_file:
@@ -24,6 +31,12 @@ services:
       - PHP_UPLOAD_MAX_FILESIZE=${PHP_UPLOAD_MAX_FILESIZE:-128M}
       - PHP_PM_MAX_CHILDREN=${PHP_PM_MAX_CHILDREN:-16}
       - PHP_OPCACHE_VALIDATE_TIMESTAMPS=0
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(@fsockopen('127.0.0.1', 9000) ? 0 : 1);"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     volumes:
       - ./jwt:/var/www/html/config/jwt:rw
       - ./media:/var/www/html/public/media:rw
@@ -31,14 +44,21 @@ services:
   nginx-api:
     image: ghcr.io/os2display/display-api-service-nginx:${OS2DISPLAY_VERSION_API}
     restart: unless-stopped
+    logging: *default-logging
     networks:
       - app
       - frontend
     environment:
-      - PHP_FPM_SERVER=os2display
-      - NGINX_FPM_UPLOAD_MAX=${NGINX_FPM_UPLOAD_MAX:-140M}
+      - NGINX_MAX_BODY_SIZE=${NGINX_MAX_BODY_SIZE:-140m}
     depends_on:
-      - os2display
+      os2display:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=frontend"
@@ -57,6 +77,7 @@ services:
   admin:
     image: itkdev/os2display-admin-client:${OS2DISPLAY_VERSION_ADMIN}
     restart: unless-stopped
+    logging: *default-logging
     networks:
       - app
       - frontend
@@ -80,6 +101,7 @@ services:
   client:
     image: itkdev/os2display-client:${OS2DISPLAY_VERSION_CLIENT}
     restart: unless-stopped
+    logging: *default-logging
     networks:
       - app
       - frontend
@@ -103,15 +125,26 @@ services:
       - "traefik.http.routers.clientos2display.entrypoints=websecure"
 
   redis:
-    image: redis:6
+    image: redis:7.4-alpine
     restart: unless-stopped
+    logging: *default-logging
     networks:
       - app
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --save 60 1000 --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    volumes:
+      - redis-data:/data
 
   mariadb:
-    image: mariadb:10.11.11
+    image: mariadb:10.11.16
     profiles: [mariadb]
     restart: unless-stopped
+    logging: *default-logging
     networks:
       - app
     environment:
@@ -119,6 +152,12 @@ services:
       - MARIADB_USER=${MARIADB_USER}
       - MARIADB_PASSWORD=${MARIADB_PASSWORD}
       - MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD}
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     volumes:
       - mariadb:/var/lib/mysql:rw
 
@@ -127,6 +166,7 @@ services:
     profiles: [traefik]
     container_name: traefik
     restart: unless-stopped
+    logging: *default-logging
     security_opt:
       - no-new-privileges:true
     env_file:
@@ -166,6 +206,7 @@ services:
     profiles: [traefik]
     container_name: socket-proxy
     restart: unless-stopped
+    logging: *default-logging
     # Hardening: no `user: root` override here — the upstream image runs as
     # a non-root user by default. Keeps the privilege footprint minimal even
     # before security_opt below.
@@ -198,3 +239,4 @@ services:
 
 volumes:
   mariadb:
+  redis-data:
