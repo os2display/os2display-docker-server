@@ -155,11 +155,21 @@ services:
       - "traefik.http.routers.dashboard.middlewares=dashboard-auth,security-headers@file"
 
   socket-proxy:
-    image: itkdev/docker-socket-proxy
+    image: ghcr.io/tecnativa/docker-socket-proxy:0.3.0
     profiles: [traefik]
     container_name: socket-proxy
-    user: root
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /run
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:2375/version || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
