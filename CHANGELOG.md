@@ -2,6 +2,13 @@
 
 ## [Unreleased] — release/3.0.0
 
+### Removed (breaking) — admin and client container services
+
+- `admin` and `client` services deleted from `docker-compose.yml`. The v3 `display-api-service` image bundles both UIs and serves them as Symfony routes (`/admin` and `/client`); the upstream `os2display-admin-client` and `os2display-client` repos are being archived.
+- Behaviour-fix, not just a cleanup: while these services were still in compose alongside the v3 API image, their Traefik labels (`Host(domain) && PathPrefix(/admin|/client)`) won the longest-match rule and routed those paths to the v2 frontend containers — which can't speak the v3 API contract. Operators on the previous tip were silently getting broken admin and client UIs at `/admin` and `/client`.
+- Operator action on upgrade: edit `.env.local` to set the `ADMIN_*` and `CLIENT_*` keys (login methods, color scheme, etc.) the bundled UIs expect. Defaults from the image suffice for a working install; per-site customisation matches the v2 admin/client config you previously kept in `.env.docker.local`.
+- Removed from `.env.example`: `OS2DISPLAY_VERSION_ADMIN`, `OS2DISPLAY_VERSION_CLIENT`, `OS2DISPLAY_SCREEN_CLIENT_PATH`, `API_PATH`, `APP_TOUCH_BUTTON_REGIONS`, `APP_REJSEPLANEN_API_KEY`, `APP_PREVIEW_CLIENT`, `APP_SHOW_SCREEN_STATUS`. `OS2DISPLAY_ADMIN_CLIENT_PATH` is retained — `nginx-api`'s `/` → `/admin` redirect middleware still uses it.
+
 ### Changed (breaking) — MariaDB major version bump
 
 - **`mariadb:10.11.16` → `mariadb:11.4.10`** (LTS-to-LTS).

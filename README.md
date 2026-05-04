@@ -83,7 +83,7 @@ Edit each file before running `task install`.
 
 ### Stack composition
 
-`COMPOSE_PROFILES` in `.env` controls which built-in infrastructure services start. Core services (`os2display`, `nginx-api`, `redis`, `admin`, `client`) always run.
+`COMPOSE_PROFILES` in `.env` controls which built-in infrastructure services start. Core services (`os2display`, `nginx-api`, `redis`) always run. The admin UI and screen client are bundled into the `os2display` image in 3.x and served as Symfony routes — there are no separate `admin` / `client` containers.
 
 | `COMPOSE_PROFILES` value | Built-in services started | Use when |
 |---|---|---|
@@ -119,7 +119,7 @@ The project uses a `Taskfile.yml` to simplify common operations. Below is a list
 ### Pre-installation Notes
 Before running `task install`, ensure the following:
 1. `cp .env.example .env` and set your `OS2DISPLAY_SERVER_DOMAIN`, `OS2DISPLAY_VERSION_API`, and MariaDB credentials.
-2. `task env:init` to extract the annotated `.env.local` from the API image. Then edit it: set `APP_SECRET`, `JWT_PASSPHRASE`, `DATABASE_URL`, and any OIDC values you need. (Operators upgrading from 2.x: run `task env:migrate` first to rename `APP_*` keys.)
+2. `task env:init` to extract the annotated `.env.local` from the API image. Then edit it: set `APP_SECRET`, `JWT_PASSPHRASE`, `DATABASE_URL`, OIDC values, plus any `ADMIN_*` / `CLIENT_*` overrides you need (login methods, color scheme, screen-status visibility, etc.). The defaults from the image are sane enough to install and log in. (Operators upgrading from 2.x: run `task env:migrate` first to rename `APP_*` keys.)
 3. Run `task traefik_env` to configure the Traefik dashboard credentials and Let's Encrypt email (or copy `.env.traefik.example` to `.env.traefik` and edit by hand).
 4. If using a custom SSL certificate (`SERVER_CERT_PROVIDER=cert-file`), place `docker.crt` and `docker.key` in `traefik/ssl/`.
 

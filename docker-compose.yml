@@ -74,56 +74,6 @@ services:
     volumes:
       - ./media:/var/www/html/public/media:rw
 
-  admin:
-    image: itkdev/os2display-admin-client:${OS2DISPLAY_VERSION_ADMIN}
-    restart: unless-stopped
-    logging: *default-logging
-    networks:
-      - app
-      - frontend
-    environment:
-      - APP_ADMIN_CLIENT_PATH=${OS2DISPLAY_ADMIN_CLIENT_PATH}
-      - API_PATH=${API_PATH:-/}
-      - APP_TOUCH_BUTTON_REGIONS=${APP_TOUCH_BUTTON_REGIONS:-true}
-      - APP_REJSEPLANEN_API_KEY=${APP_REJSEPLANEN_API_KEY:-}
-      - APP_SHOW_SCREEN_STATUS=${APP_SHOW_SCREEN_STATUS:-true}
-      - APP_PREVIEW_CLIENT=${APP_PREVIEW_CLIENT:-}
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=frontend"
-      - "traefik.http.routers.adminos2display-http.rule=Host(`${OS2DISPLAY_SERVER_DOMAIN}`) && PathPrefix(`${OS2DISPLAY_ADMIN_CLIENT_PATH}`)"
-      - "traefik.http.routers.adminos2display-http.entrypoints=web"
-      - "traefik.http.routers.adminos2display-http.middlewares=redirect-to-https"
-      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
-      - "traefik.http.routers.adminos2display.rule=Host(`${OS2DISPLAY_SERVER_DOMAIN}`) && PathPrefix(`${OS2DISPLAY_ADMIN_CLIENT_PATH}`)"
-      - "traefik.http.routers.adminos2display.entrypoints=websecure"
-
-  client:
-    image: itkdev/os2display-client:${OS2DISPLAY_VERSION_CLIENT}
-    restart: unless-stopped
-    logging: *default-logging
-    networks:
-      - app
-      - frontend
-    environment:
-      - APP_SCREEN_CLIENT_PATH=${OS2DISPLAY_SCREEN_CLIENT_PATH:?err}
-      - APP_API_ENDPOINT=https://${OS2DISPLAY_SERVER_DOMAIN}
-      - APP_API_PATH=https://${OS2DISPLAY_SERVER_DOMAIN}
-      - APP_API_AUTHENTICATION_ENDPOINT=https://${OS2DISPLAY_SERVER_DOMAIN}/v1/authentication/screen
-      - APP_API_AUTHENTICATION_REFRESH_ENDPOINT=https://${OS2DISPLAY_SERVER_DOMAIN}/v1/authentication/token/refresh
-      - APP_DATA_PULL_INTERVAL=${APP_DATA_PULL_INTERVAL:-90000}
-      - APP_SCHEDULING_INTERVAL=${APP_SCHEDULING_INTERVAL:-60000}
-      - APP_DEBUG=${APP_DEBUG:-false}
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=frontend"
-      - "traefik.http.routers.clientos2display-http.rule=Host(`${OS2DISPLAY_SERVER_DOMAIN}`) && PathPrefix(`${OS2DISPLAY_SCREEN_CLIENT_PATH}`)"
-      - "traefik.http.routers.clientos2display-http.entrypoints=web"
-      - "traefik.http.routers.clientos2display-http.middlewares=redirect-to-https"
-      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
-      - "traefik.http.routers.clientos2display.rule=Host(`${OS2DISPLAY_SERVER_DOMAIN}`) && PathPrefix(`${OS2DISPLAY_SCREEN_CLIENT_PATH}`)"
-      - "traefik.http.routers.clientos2display.entrypoints=websecure"
-
   redis:
     image: redis:8-alpine
     restart: unless-stopped
