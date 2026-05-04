@@ -6,85 +6,49 @@ networks:
     internal: false
 
 services:
-  api:
-    image: itkdev/os2display-api-service:${COMPOSE_VERSION_API}
+  os2display:
+    image: itkdev/os2display-api-service:${OS2DISPLAY_VERSION_API}
     restart: unless-stopped
     networks:
       - app
+    env_file:
+      - .env.local
     environment:
-      # PHP config values
-      - PHP_MAX_EXECUTION_TIME=${PHP_MAX_EXECUTION_TIME}
-      - PHP_MEMORY_LIMIT=${PHP_MEMORY_LIMIT}
-      - PHP_POST_MAX_SIZE=${PHP_POST_MAX_SIZE}
-      - PHP_UPLOAD_MAX_FILESIZE=${PHP_UPLOAD_MAX_FILESIZE}
       - PHP_TIMEZONE=UTC
-      - PHP_PM_MAX_CHILDREN=16
+      - PHP_MAX_EXECUTION_TIME=${PHP_MAX_EXECUTION_TIME:-30}
+      - PHP_MEMORY_LIMIT=${PHP_MEMORY_LIMIT:-128M}
+      - PHP_POST_MAX_SIZE=${PHP_POST_MAX_SIZE:-140M}
+      - PHP_UPLOAD_MAX_FILESIZE=${PHP_UPLOAD_MAX_FILESIZE:-128M}
+      - PHP_PM_MAX_CHILDREN=${PHP_PM_MAX_CHILDREN:-16}
       - PHP_OPCACHE_VALIDATE_TIMESTAMPS=0
-      # APP (Symfony)
-      - APP_SECRET=${APP_SECRET:?err}
-      - APP_DATABASE_URL=${APP_DATABASE_URL:?err}
-      - APP_JWT_PASSPHRASE=${APP_JWT_PASSPHRASE:?err}
-      - APP_JWT_TOKEN_TTL=${APP_JWT_TOKEN_TTL}
-      - APP_JWT_SCREEN_TOKEN_TTL=${APP_JWT_SCREEN_TOKEN_TTL}
-      - APP_JWT_REFRESH_TOKEN_TTL=${APP_JWT_REFRESH_TOKEN_TTL}
-      - APP_JWT_SCREEN_REFRESH_TOKEN_TTL=${APP_JWT_SCREEN_REFRESH_TOKEN_TTL}
-      - APP_ENV=${APP_ENV}
-      - APP_TRUSTED_PROXIES=${APP_TRUSTED_PROXIES}
-      - APP_CORS_ALLOW_ORIGIN=${APP_CORS_ALLOW_ORIGIN}
-      - APP_DEFAULT_DATE_FORMAT=${APP_DEFAULT_DATE_FORMAT}
-      - APP_INTERNAL_OIDC_METADATA_URL=${INTERNAL_OIDC_METADATA_URL}
-      - APP_INTERNAL_OIDC_CLIENT_ID=${INTERNAL_OIDC_CLIENT_ID}
-      - APP_INTERNAL_OIDC_CLIENT_SECRET=${INTERNAL_OIDC_CLIENT_SECRET}
-      - APP_INTERNAL_OIDC_REDIRECT_URI=${INTERNAL_OIDC_REDIRECT_URI}
-      - APP_INTERNAL_OIDC_LEEWAY=${INTERNAL_OIDC_LEEWAY}
-      - APP_EXTERNAL_OIDC_METADATA_URL=${EXTERNAL_OIDC_METADATA_URL}
-      - APP_EXTERNAL_OIDC_CLIENT_ID=${EXTERNAL_OIDC_CLIENT_ID}
-      - APP_EXTERNAL_OIDC_CLIENT_SECRET=${EXTERNAL_OIDC_CLIENT_SECRET}
-      - APP_EXTERNAL_OIDC_REDIRECT_URI=${EXTERNAL_OIDC_REDIRECT_URI}
-      - APP_EXTERNAL_OIDC_LEEWAY=${EXTERNAL_OIDC_LEEWAY}
-      - APP_EXTERNAL_OIDC_HASH_SALT=${EXTERNAL_OIDC_HASH_SALT}
-      - APP_EXTERNAL_OIDC_CLAIM_ID=${EXTERNAL_OIDC_CLAIM_ID}
-      - APP_REDIS_CACHE_PREFIX=${APP_REDIS_CACHE_PREFIX}
-      - APP_REDIS_CACHE_DSN=${APP_REDIS_CACHE_DSN}
-      - APP_CALENDAR_API_FEED_SOURCE_LOCATION_ENDPOINT=${APP_CALENDAR_API_FEED_SOURCE_LOCATION_ENDPOINT}
-      - APP_CALENDAR_API_FEED_SOURCE_RESOURCE_ENDPOINT=${APP_CALENDAR_API_FEED_SOURCE_RESOURCE_ENDPOINT}
-      - APP_CALENDAR_API_FEED_SOURCE_EVENT_ENDPOINT=${APP_CALENDAR_API_FEED_SOURCE_EVENT_ENDPOINT}
-      - APP_CALENDAR_API_FEED_SOURCE_CUSTOM_MAPPINGS=${APP_CALENDAR_API_FEED_SOURCE_CUSTOM_MAPPINGS}
-      - APP_CALENDAR_API_FEED_SOURCE_EVENT_MODIFIERS=${APP_CALENDAR_API_FEED_SOURCE_EVENT_MODIFIERS}
-      - APP_CALENDAR_API_FEED_SOURCE_DATE_FORMAT=${APP_CALENDAR_API_FEED_SOURCE_DATE_FORMAT}
-      - APP_CALENDAR_API_FEED_SOURCE_DATE_TIMEZONE=${APP_CALENDAR_API_FEED_SOURCE_DATE_TIMEZONE}
-      - APP_CALENDAR_API_FEED_SOURCE_CACHE_EXPIRE_SECONDS=${APP_CALENDAR_API_FEED_SOURCE_CACHE_EXPIRE_SECONDS}
-      - APP_TRACK_SCREEN_INFO=${APP_TRACK_SCREEN_INFO}
-      - APP_TRACK_SCREEN_INFO_UPDATE_INTERVAL_SECONDS=${APP_TRACK_SCREEN_INFO_UPDATE_INTERVAL_SECONDS}
-      - APP_KEY_VAULT_JSON=${APP_KEY_VAULT_JSON}
     volumes:
       - ./jwt:/var/www/html/config/jwt:rw
       - ./media:/var/www/html/public/media:rw
 
   nginx-api:
-    image: itkdev/os2display-api-service-nginx:${COMPOSE_VERSION_API}
+    image: itkdev/os2display-api-service-nginx:${OS2DISPLAY_VERSION_API}
     restart: unless-stopped
     networks:
       - app
       - frontend
     environment:
-      - PHP_FPM_SERVER=api
+      - PHP_FPM_SERVER=os2display
       - NGINX_FPM_UPLOAD_MAX=${NGINX_FPM_UPLOAD_MAX}
     depends_on:
-      - api
+      - os2display
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=frontend"
-      - "traefik.http.routers.apios2display-http.rule=Host(`${COMPOSE_SERVER_DOMAIN}`)"
+      - "traefik.http.routers.apios2display-http.rule=Host(`${OS2DISPLAY_SERVER_DOMAIN}`)"
       - "traefik.http.routers.apios2display-http.entrypoints=web"
       - "traefik.http.routers.apios2display-http.middlewares=redirect-to-https"
       - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
-      - "traefik.http.routers.apios2display.rule=Host(`${COMPOSE_SERVER_DOMAIN}`)"
+      - "traefik.http.routers.apios2display.rule=Host(`${OS2DISPLAY_SERVER_DOMAIN}`)"
       - "traefik.http.routers.apios2display.entrypoints=websecure"
-      # Redirect root / request to /${COMPOSE_ADMIN_CLIENT_PATH}
+      # Redirect root / request to /${OS2DISPLAY_ADMIN_CLIENT_PATH}
       - "traefik.http.routers.apios2display.middlewares=redirect-to-admin"
       - "traefik.http.middlewares.redirect-to-admin.redirectregex.regex=^https:\\/\\/([^\\/]+)\\/?$$"
-      - "traefik.http.middlewares.redirect-to-admin.redirectregex.replacement=https://$$1${COMPOSE_ADMIN_CLIENT_PATH}"
+      - "traefik.http.middlewares.redirect-to-admin.redirectregex.replacement=https://$$1${OS2DISPLAY_ADMIN_CLIENT_PATH}"
       # - "traefik.http.routers.apios2display.middlewares=apios2display"
       # - "traefik.http.middlewares.apios2display.ipwhitelist.sourcerange=212.10.60.163, 10.225.0.0/16"
       # - "traefik.http.routers.${COMPOSE_PROJECT_NAME}.middlewares=ITKBasicAuth@file"
@@ -92,13 +56,13 @@ services:
       - ./media:/var/www/html/public/media:rw
 
   admin:
-    image: itkdev/os2display-admin-client:${COMPOSE_VERSION_ADMIN}
+    image: itkdev/os2display-admin-client:${OS2DISPLAY_VERSION_ADMIN}
     restart: unless-stopped
     networks:
       - app
       - frontend
     environment:
-      - APP_ADMIN_CLIENT_PATH=${COMPOSE_ADMIN_CLIENT_PATH}
+      - APP_ADMIN_CLIENT_PATH=${OS2DISPLAY_ADMIN_CLIENT_PATH}
       - API_PATH=${API_PATH}
       - APP_TOUCH_BUTTON_REGIONS=${APP_TOUCH_BUTTON_REGIONS}
       - APP_REJSEPLANEN_API_KEY=${APP_REJSEPLANEN_API_KEY}
@@ -107,23 +71,23 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=frontend"
-      - "traefik.http.routers.adminos2display-http.rule=Host(`${COMPOSE_SERVER_DOMAIN}`) && PathPrefix(`${COMPOSE_ADMIN_CLIENT_PATH}`)"
+      - "traefik.http.routers.adminos2display-http.rule=Host(`${OS2DISPLAY_SERVER_DOMAIN}`) && PathPrefix(`${OS2DISPLAY_ADMIN_CLIENT_PATH}`)"
       - "traefik.http.routers.adminos2display-http.entrypoints=web"
       - "traefik.http.routers.adminos2display-http.middlewares=redirect-to-https"
       - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
-      - "traefik.http.routers.adminos2display.rule=Host(`${COMPOSE_SERVER_DOMAIN}`) && PathPrefix(`${COMPOSE_ADMIN_CLIENT_PATH}`)"
+      - "traefik.http.routers.adminos2display.rule=Host(`${OS2DISPLAY_SERVER_DOMAIN}`) && PathPrefix(`${OS2DISPLAY_ADMIN_CLIENT_PATH}`)"
       - "traefik.http.routers.adminos2display.entrypoints=websecure"
       # - "traefik.http.routers.adminos2display.middlewares=apios2display"
       # - "traefik.http.routers.${COMPOSE_PROJECT_NAME}.middlewares=ITKBasicAuth@file"
 
   client:
-    image: itkdev/os2display-client:${COMPOSE_VERSION_CLIENT}
+    image: itkdev/os2display-client:${OS2DISPLAY_VERSION_CLIENT}
     restart: unless-stopped
     networks:
       - app
       - frontend
     environment:
-      - APP_SCREEN_CLIENT_PATH=${COMPOSE_SCREEN_CLIENT_PATH:?err}
+      - APP_SCREEN_CLIENT_PATH=${OS2DISPLAY_SCREEN_CLIENT_PATH:?err}
       - APP_API_ENDPOINT=${APP_API_ENDPOINT:?err}
       - APP_API_PATH=${APP_API_PATH:?err}
       - APP_API_AUTHENTICATION_ENDPOINT=${APP_API_AUTHENTICATION_ENDPOINT}
@@ -134,11 +98,11 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=frontend"
-      - "traefik.http.routers.clientos2display-http.rule=Host(`${COMPOSE_SERVER_DOMAIN}`) && PathPrefix(`${COMPOSE_SCREEN_CLIENT_PATH}`)"
+      - "traefik.http.routers.clientos2display-http.rule=Host(`${OS2DISPLAY_SERVER_DOMAIN}`) && PathPrefix(`${OS2DISPLAY_SCREEN_CLIENT_PATH}`)"
       - "traefik.http.routers.clientos2display-http.entrypoints=web"
       - "traefik.http.routers.clientos2display-http.middlewares=redirect-to-https"
       - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
-      - "traefik.http.routers.clientos2display.rule=Host(`${COMPOSE_SERVER_DOMAIN}`) && PathPrefix(`${COMPOSE_SCREEN_CLIENT_PATH}`)"
+      - "traefik.http.routers.clientos2display.rule=Host(`${OS2DISPLAY_SERVER_DOMAIN}`) && PathPrefix(`${OS2DISPLAY_SCREEN_CLIENT_PATH}`)"
       - "traefik.http.routers.clientos2display.entrypoints=websecure"
       # - "traefik.http.routers.clientos2display.middlewares=apios2display"
       # - "traefik.http.routers.${COMPOSE_PROJECT_NAME}.middlewares=ITKBasicAuth@file"
