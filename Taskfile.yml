@@ -31,6 +31,8 @@ tasks:
       - echo "    tenant_add      Add a new tenant group"
       - echo "    user_add        Add a new user"
       - echo "    load_templates  Install bundled templates and screen layouts"
+      - echo "    db:backup       Dump the bundled MariaDB to ./backup/<ts>.sql.gz"
+      - echo "    db:upgrade      Run mariadb-upgrade (after a MariaDB major bump)"
       - echo ""
 
   install:
@@ -168,6 +170,44 @@ tasks:
         echo "Wrote $OUT (from $SRC)."
         echo "Review with: diff -u $SRC $OUT"
         echo "Apply with:  mv $OUT .env.local"
+
+  db:backup:
+    desc: Dump the bundled MariaDB to ./backup/<timestamp>.sql.gz (online, --single-transaction)
+    preconditions:
+      - sh: '[ -f .env ]'
+        msg: ".env missing — copy .env.example to .env first."
+      - sh: '[ -f .env.local ]'
+        msg: ".env.local missing — run 'task env:init' first."
+    cmds:
+      - mkdir -p backup
+      - |
+        ROOT_PASSWORD=$(grep ^MARIADB_ROOT_PASSWORD= .env | cut -d= -f2-)
+        if [ -z "$ROOT_PASSWORD" ]; then
+          echo "Error: MARIADB_ROOT_PASSWORD is empty in .env"
+          exit 1
+        fi
+        TS=$(date -u +%Y%m%dT%H%M%SZ)
+        OUT="backup/${TS}.sql.gz"
+        echo "Dumping all databases to $OUT (--single-transaction, no service downtime)..."
+        {{.COMPOSE}} exec -T mariadb mariadb-dump \
+          --all-databases --single-transaction --quick --routines --triggers --events \
+          --user=root --password="$ROOT_PASSWORD" \
+          | gzip > "$OUT"
+        echo "Wrote $OUT ($(du -h "$OUT" | cut -f1))."
+
+  db:upgrade:
+    desc: Run mariadb-upgrade against the bundled MariaDB (idempotent; run after a major version bump)
+    preconditions:
+      - sh: '[ -f .env ]'
+        msg: ".env missing — copy .env.example to .env first."
+    cmds:
+      - |
+        ROOT_PASSWORD=$(grep ^MARIADB_ROOT_PASSWORD= .env | cut -d= -f2-)
+        if [ -z "$ROOT_PASSWORD" ]; then
+          echo "Error: MARIADB_ROOT_PASSWORD is empty in .env"
+          exit 1
+        fi
+        {{.COMPOSE}} exec -T mariadb mariadb-upgrade --user=root --password="$ROOT_PASSWORD"
 
   reinstall:
     desc: Reinstall from scratch. Removes the database, all containers, and volumes.

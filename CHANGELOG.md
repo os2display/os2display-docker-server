@@ -2,6 +2,13 @@
 
 ## [Unreleased] — release/3.0.0
 
+### Changed (breaking) — MariaDB major version bump
+
+- **`mariadb:10.11.16` → `mariadb:11.4.10`** (LTS-to-LTS).
+  - Operators must take a backup, run the upgrade, and update `DATABASE_URL` `serverVersion=` in `.env.local` (e.g. `serverVersion=11.4.10-MariaDB`). Doctrine uses `serverVersion` to pick its SQL dialect; a mismatch produces wrong queries.
+  - Full recipe in README § "Upgrading the bundled MariaDB across a major version".
+  - `task db:backup` and `task db:upgrade` automate the steps that are container-local; the `serverVersion` edit and the dependent-service stop/start are still operator actions.
+
 ### Added
 
 - Global JSON-file log rotation via `x-logging` anchor (10MB × 3 files per service). Applied to every service so a runaway container can't fill the host disk.

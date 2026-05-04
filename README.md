@@ -128,5 +128,35 @@ For a full list of tasks, run:
 task --list
 ```
 
+## Upgrading the bundled MariaDB across a major version
+
+A MariaDB major-version bump (e.g. 10.11 → 11.4) is binary-compatible at the data-file level — MariaDB 11 reads 10.x InnoDB tablespaces — but it is not a one-shot container restart. Three things have to happen for a clean cut:
+
+1. **Take a backup.** `task db:backup` writes `./backup/<timestamp>.sql.gz` using `mariadb-dump --single-transaction`, no service downtime.
+2. **Pull the new image, restart the DB, run the upgrade.** The official `mariadb` image's entrypoint auto-runs `mariadb-upgrade` when it detects a version bump on existing data, but running it explicitly afterwards via `task db:upgrade` is a cheap belt-and-suspenders sanity step. Errors in `mariadb-upgrade` surface only at query time later if skipped.
+3. **Update `DATABASE_URL` `serverVersion=` in `.env.local`.** Doctrine uses this to pick its SQL dialect — a mismatch produces subtly wrong queries (most often: incorrect JSON or function syntax). For 11.4: `serverVersion=11.4.10-MariaDB`.
+
+Recipe:
+
+```bash
+task db:backup                    # ./backup/<ts>.sql.gz
+task stop                         # bring down dependents (api, nginx, admin, client)
+
+# Edit OS2DISPLAY_VERSION_API / mariadb tag in docker-compose.yml or rely on this branch's pin.
+docker compose pull mariadb
+docker compose up -d mariadb
+docker compose logs -f mariadb    # wait until you see "ready for connections"
+
+task db:upgrade                   # idempotent; safe to re-run
+
+# Edit DATABASE_URL serverVersion in .env.local to match the new MariaDB version.
+$EDITOR .env.local
+
+task up                           # bring everything back up
+task cc                           # flush Doctrine's cached metadata
+```
+
+If `task db:upgrade` reports incompatible objects, restore from the dump (`gunzip < backup/<ts>.sql.gz | docker compose exec -T mariadb mariadb -u root -p$MARIADB_ROOT_PASSWORD`) and roll back to the previous image before debugging.
+
 
 
