@@ -125,7 +125,7 @@ services:
       - "traefik.http.routers.clientos2display.entrypoints=websecure"
 
   redis:
-    image: redis:7.4-alpine
+    image: redis:8-alpine
     restart: unless-stopped
     logging: *default-logging
     networks:

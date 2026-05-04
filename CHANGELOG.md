@@ -9,7 +9,7 @@
 
 ### Changed
 
-- Pinned `redis` to `7.4-alpine` (was floating `redis:6`). Added `--maxmemory 256mb --maxmemory-policy allkeys-lru --save 60 1000 --appendonly yes` to `command:` so the cache has a memory ceiling, an eviction policy, and persistence to a named `redis-data` volume.
+- Pinned `redis` to `8-alpine` (was floating `redis:6`). Added `--maxmemory 256mb --maxmemory-policy allkeys-lru --save 60 1000 --appendonly yes` to `command:` so the cache has a memory ceiling, an eviction policy, and persistence to a named `redis-data` volume.
 - Bumped `mariadb` from `10.11.11` to `10.11.16` (current 10.11 LTS patch).
 - nginx env-var contract aligned with the v3 image: `NGINX_FPM_UPLOAD_MAX` → `NGINX_MAX_BODY_SIZE`. The obsolete `PHP_FPM_SERVER` override removed (image's `NGINX_FPM_SERVICE=os2display` default is correct).
 
