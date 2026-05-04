@@ -4,6 +4,9 @@ networks:
   app:
     driver: bridge
     internal: false
+  proxy:
+    driver: bridge
+    internal: true
 
 services:
   os2display:
@@ -33,7 +36,7 @@ services:
       - frontend
     environment:
       - PHP_FPM_SERVER=os2display
-      - NGINX_FPM_UPLOAD_MAX=${NGINX_FPM_UPLOAD_MAX}
+      - NGINX_FPM_UPLOAD_MAX=${NGINX_FPM_UPLOAD_MAX:-140M}
     depends_on:
       - os2display
     labels:
@@ -45,13 +48,9 @@ services:
       - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
       - "traefik.http.routers.apios2display.rule=Host(`${OS2DISPLAY_SERVER_DOMAIN}`)"
       - "traefik.http.routers.apios2display.entrypoints=websecure"
-      # Redirect root / request to /${OS2DISPLAY_ADMIN_CLIENT_PATH}
       - "traefik.http.routers.apios2display.middlewares=redirect-to-admin"
       - "traefik.http.middlewares.redirect-to-admin.redirectregex.regex=^https:\\/\\/([^\\/]+)\\/?$$"
       - "traefik.http.middlewares.redirect-to-admin.redirectregex.replacement=https://$$1${OS2DISPLAY_ADMIN_CLIENT_PATH}"
-      # - "traefik.http.routers.apios2display.middlewares=apios2display"
-      # - "traefik.http.middlewares.apios2display.ipwhitelist.sourcerange=212.10.60.163, 10.225.0.0/16"
-      # - "traefik.http.routers.${COMPOSE_PROJECT_NAME}.middlewares=ITKBasicAuth@file"
     volumes:
       - ./media:/var/www/html/public/media:rw
 
@@ -63,11 +62,11 @@ services:
       - frontend
     environment:
       - APP_ADMIN_CLIENT_PATH=${OS2DISPLAY_ADMIN_CLIENT_PATH}
-      - API_PATH=${API_PATH}
-      - APP_TOUCH_BUTTON_REGIONS=${APP_TOUCH_BUTTON_REGIONS}
-      - APP_REJSEPLANEN_API_KEY=${APP_REJSEPLANEN_API_KEY}
-      - APP_SHOW_SCREEN_STATUS=${APP_SHOW_SCREEN_STATUS}
-      - APP_PREVIEW_CLIENT=${APP_PREVIEW_CLIENT}
+      - API_PATH=${API_PATH:-/}
+      - APP_TOUCH_BUTTON_REGIONS=${APP_TOUCH_BUTTON_REGIONS:-true}
+      - APP_REJSEPLANEN_API_KEY=${APP_REJSEPLANEN_API_KEY:-}
+      - APP_SHOW_SCREEN_STATUS=${APP_SHOW_SCREEN_STATUS:-true}
+      - APP_PREVIEW_CLIENT=${APP_PREVIEW_CLIENT:-}
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=frontend"
@@ -77,8 +76,6 @@ services:
       - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
       - "traefik.http.routers.adminos2display.rule=Host(`${OS2DISPLAY_SERVER_DOMAIN}`) && PathPrefix(`${OS2DISPLAY_ADMIN_CLIENT_PATH}`)"
       - "traefik.http.routers.adminos2display.entrypoints=websecure"
-      # - "traefik.http.routers.adminos2display.middlewares=apios2display"
-      # - "traefik.http.routers.${COMPOSE_PROJECT_NAME}.middlewares=ITKBasicAuth@file"
 
   client:
     image: itkdev/os2display-client:${OS2DISPLAY_VERSION_CLIENT}
@@ -88,13 +85,13 @@ services:
       - frontend
     environment:
       - APP_SCREEN_CLIENT_PATH=${OS2DISPLAY_SCREEN_CLIENT_PATH:?err}
-      - APP_API_ENDPOINT=${APP_API_ENDPOINT:?err}
-      - APP_API_PATH=${APP_API_PATH:?err}
-      - APP_API_AUTHENTICATION_ENDPOINT=${APP_API_AUTHENTICATION_ENDPOINT}
-      - APP_API_AUTHENTICATION_REFRESH_ENDPOINT=${APP_API_AUTHENTICATION_REFRESH_ENDPOINT}
-      - APP_DATA_PULL_INTERVAL=${APP_DATA_PULL_INTERVAL}
-      - APP_SCHEDULING_INTERVAL=${APP_SCHEDULING_INTERVAL}
-      - APP_DEBUG=${APP_DEBUG}
+      - APP_API_ENDPOINT=https://${OS2DISPLAY_SERVER_DOMAIN}
+      - APP_API_PATH=https://${OS2DISPLAY_SERVER_DOMAIN}
+      - APP_API_AUTHENTICATION_ENDPOINT=https://${OS2DISPLAY_SERVER_DOMAIN}/v1/authentication/screen
+      - APP_API_AUTHENTICATION_REFRESH_ENDPOINT=https://${OS2DISPLAY_SERVER_DOMAIN}/v1/authentication/token/refresh
+      - APP_DATA_PULL_INTERVAL=${APP_DATA_PULL_INTERVAL:-90000}
+      - APP_SCHEDULING_INTERVAL=${APP_SCHEDULING_INTERVAL:-60000}
+      - APP_DEBUG=${APP_DEBUG:-false}
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=frontend"
@@ -104,11 +101,71 @@ services:
       - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
       - "traefik.http.routers.clientos2display.rule=Host(`${OS2DISPLAY_SERVER_DOMAIN}`) && PathPrefix(`${OS2DISPLAY_SCREEN_CLIENT_PATH}`)"
       - "traefik.http.routers.clientos2display.entrypoints=websecure"
-      # - "traefik.http.routers.clientos2display.middlewares=apios2display"
-      # - "traefik.http.routers.${COMPOSE_PROJECT_NAME}.middlewares=ITKBasicAuth@file"
 
   redis:
-    image: 'redis:6'
+    image: redis:6
     restart: unless-stopped
     networks:
       - app
+
+  mariadb:
+    image: mariadb:10.11.11
+    profiles: [mariadb]
+    restart: unless-stopped
+    networks:
+      - app
+    environment:
+      - MARIADB_DATABASE=${MARIADB_DATABASE}
+      - MARIADB_USER=${MARIADB_USER}
+      - MARIADB_PASSWORD=${MARIADB_PASSWORD}
+      - MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD}
+    volumes:
+      - mariadb:/var/lib/mysql:rw
+
+  traefik:
+    image: traefik:v3.6
+    profiles: [traefik]
+    container_name: traefik
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    env_file:
+      - path: .env.traefik
+        required: true
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./traefik/ssl:/certs:ro
+      - ./traefik/letsencrypt:/letsencrypt
+      - ./traefik/traefik.yml:/traefik.yml:ro
+      - ./traefik/dynamic-conf-${SERVER_CERT_PROVIDER:-letsencrypt}.yaml:/config/dynamic-conf.yaml:ro
+    networks:
+      - ${SERVER_FRONTEND_NETWORK:-frontend}
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      # Dashboard authentication
+      - "traefik.http.middlewares.dashboard-auth.basicauth.users=${SERVER_DASHBOARD_AUTH}"
+      # Dashboard router
+      - "traefik.http.routers.dashboard.rule=Host(`${SERVER_DOMAIN}`) && PathPrefix(`/treafik/dashboard`)"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.dashboard.service=api@internal"
+      - "traefik.http.routers.dashboard.middlewares=dashboard-auth,security-headers@file"
+
+  socket-proxy:
+    image: itkdev/docker-socket-proxy
+    profiles: [traefik]
+    container_name: socket-proxy
+    user: root
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - CONTAINERS=1
+    networks:
+      - proxy
+
+volumes:
+  mariadb:

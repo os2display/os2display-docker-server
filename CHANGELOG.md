@@ -4,6 +4,10 @@
 
 ### Changed (breaking)
 
+- Compose stack consolidated into a single `docker-compose.yml`. The split into `docker-compose.server.yml` + `docker-compose.mariadb.yml` + `docker-compose.traefik.yml` is gone, along with the Taskfile `_dc_compile` synthesis step that merged them.
+- Built-in MariaDB and Traefik are now activated via `COMPOSE_PROFILES` (read natively by docker compose) instead of `INTERNAL_DATABASE` / `INTERNAL_PROXY` flags. Default `COMPOSE_PROFILES=mariadb,traefik` reproduces the prior behavior. To use external DB or proxy, drop the matching token.
+- Screen-client URLs (`APP_API_ENDPOINT`, etc.) are now derived from `OS2DISPLAY_SERVER_DOMAIN` directly in `docker-compose.yml`. Operators no longer hand-edit five `https://demo.os2display.dk` lines in `.env`.
+
 - Operator config split into two files: `.env` for orchestration (read by docker compose) and `.env.local` for application config (passed to the `os2display` container via `env_file:`). The single `.env.docker.local` is gone.
 - Project-specific orchestration variables renamed from `COMPOSE_*` to `OS2DISPLAY_*` to avoid shadowing names docker compose itself reads. `COMPOSE_PROJECT_NAME` and `COMPOSE_PROFILES` keep their `COMPOSE_` prefix because they are native to docker compose. Renames: `COMPOSE_SERVER_DOMAIN` → `OS2DISPLAY_SERVER_DOMAIN`, `COMPOSE_ADMIN_CLIENT_PATH` → `OS2DISPLAY_ADMIN_CLIENT_PATH`, `COMPOSE_SCREEN_CLIENT_PATH` → `OS2DISPLAY_SCREEN_CLIENT_PATH`, `COMPOSE_VERSION_API` → `OS2DISPLAY_VERSION_API`, `COMPOSE_VERSION_ADMIN` → `OS2DISPLAY_VERSION_ADMIN`, `COMPOSE_VERSION_CLIENT` → `OS2DISPLAY_VERSION_CLIENT`.
 - The `api` service is renamed to `os2display`.

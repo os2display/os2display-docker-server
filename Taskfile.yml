@@ -2,7 +2,7 @@ version: '3'
 silent: true
 
 vars:
-  COMPOSE: docker compose -f docker-compose.yml
+  COMPOSE: docker compose --env-file .env --env-file .env.traefik
 
 tasks:
   default:
@@ -32,7 +32,7 @@ tasks:
       - sh: '[ -f .env.local ]'
         msg: ".env.local missing — copy .env.local.example to .env.local, edit it, then re-run."
     deps:
-      - _dc_compile
+      - _env_files
     cmds:
       - echo "Installing"
       - |
@@ -119,7 +119,7 @@ tasks:
   update:
     desc: Pull updated images, recreate containers, run database migrations
     deps:
-      - _dc_compile
+      - _env_files
     cmds:
       - "{{.COMPOSE}} pull"
       - "{{.COMPOSE}} up --force-recreate --detach --remove-orphans"
@@ -132,7 +132,6 @@ tasks:
       - stop
     cmds:
       - "{{.COMPOSE}} down"
-      - rm -f docker-compose.yml
 
   purge:
     desc: Remove all containers and volumes
@@ -148,12 +147,11 @@ tasks:
         else
           echo "External network 'frontend' does not exist"
         fi
-      - rm -f docker-compose.yml
 
   up:
     desc: Take the environment up without altering the existing state of the containers
     deps:
-      - _dc_compile
+      - _env_files
     cmds:
       - "{{.COMPOSE}} up -d"
 
@@ -252,38 +250,7 @@ tasks:
   _env_files:
     cmds:
       - |
-        if [ ! -f .env ]; then
-          echo ".env does not exist. Copying .env.example to .env..."
-          cp .env.example .env
-        fi
-      - |
-        if [ ! -f .env.local ]; then
-          echo ".env.local does not exist. Copying .env.local.example to .env.local..."
-          cp .env.local.example .env.local
-        fi
-      - |
         if [ ! -f .env.traefik ]; then
           echo ".env.traefik does not exist. Copying .env.traefik.example to .env.traefik..."
           cp .env.traefik.example .env.traefik
-        fi
-
-  _dc_compile:
-    deps:
-      - _env_files
-    cmds:
-      - |
-        COMPOSE_FILES="-f docker-compose.server.yml"
-        if grep -q '^INTERNAL_DATABASE=true' .env; then
-          COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.mariadb.yml"
-        fi
-        if grep -q '^INTERNAL_PROXY=true' .env; then
-          COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.traefik.yml"
-        fi
-        # .env.traefik is folded in for SERVER_* substitution in traefik labels.
-        docker compose --env-file .env --env-file .env.traefik $COMPOSE_FILES config > docker-compose.yml
-
-        # Replace all occurrences of demo.os2display.dk with the value of OS2DISPLAY_SERVER_DOMAIN
-        DOMAIN=$(grep ^OS2DISPLAY_SERVER_DOMAIN= .env | cut -d '=' -f 2)
-        if [ -n "$DOMAIN" ]; then
-          sed -i "s/demo\.os2display\.dk/$DOMAIN/g" docker-compose.yml
         fi
