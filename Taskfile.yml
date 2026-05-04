@@ -40,8 +40,8 @@ tasks:
     preconditions:
       - sh: "[ -f .env ]"
         msg: ".env missing — copy .env.example to .env, edit it, then re-run."
-      - sh: "[ -f .env.local ]"
-        msg: ".env.local missing — run 'task env:init' to bootstrap from the image, edit it, then re-run."
+      - sh: "[ -f .env.symfony ]"
+        msg: ".env.symfony missing — run 'task env:init' to bootstrap from the API image, edit it, then re-run."
     deps:
       - _env_files
     cmds:
@@ -75,8 +75,8 @@ tasks:
     cmds:
       - |
         if [ ! -f .env.traefik ]; then
-          echo ".env.traefik does not exist. Copying .env.traefik.example to .env.traefik..."
-          cp .env.traefik.example .env.traefik
+          echo ".env.traefik does not exist. Copying .env.traefik.production.example to .env.traefik..."
+          cp .env.traefik.production.example .env.traefik
         fi
 
         # Ensure htpasswd is installed
@@ -121,39 +121,40 @@ tasks:
         echo "===================================================="
 
   env:init:
-    desc: Bootstrap .env.local from the API image (run once on first install)
+    desc: Bootstrap .env.symfony from the API image (run once on first install)
     preconditions:
       - sh: "[ -f .env ]"
         msg: ".env missing — copy .env.example to .env first."
-      - sh: '! [ -f .env.local ] || [ "${FORCE:-0}" = "1" ]'
-        msg: ".env.local already exists. Use 'task env:diff' to compare, or set FORCE=1 to overwrite."
+      - sh: '! [ -f .env.symfony ] || [ "${FORCE:-0}" = "1" ]'
+        msg: ".env.symfony already exists. Use 'task env:diff' to compare, or set FORCE=1 to overwrite."
     cmds:
       - |
         VERSION=$(grep ^OS2DISPLAY_VERSION_API= .env | cut -d= -f2)
         IMAGE="ghcr.io/os2display/display-api-service:${VERSION}"
         docker pull "$IMAGE"
-        docker run --rm --entrypoint sh "$IMAGE" -c 'cat /var/www/html/.env' > .env.local
-        echo ".env.local created from $IMAGE."
-        echo "Edit it to set APP_SECRET, JWT_PASSPHRASE, DATABASE_URL, then run 'task install'."
+        docker run --rm --entrypoint sh "$IMAGE" -c 'cat /var/www/html/.env' > .env.symfony
+        echo ".env.symfony created from $IMAGE."
+        echo "Edit it to set APP_SECRET, JWT_PASSPHRASE, DATABASE_URL, plus any ADMIN_* / CLIENT_* / OIDC_* overrides."
+        echo "Then run 'task install'."
 
   env:diff:
-    desc: Compare .env.local against the example shipped in the current API image
+    desc: Compare .env.symfony against the example shipped in the current API image
     preconditions:
       - sh: "[ -f .env ]"
         msg: ".env missing — copy .env.example to .env first."
-      - sh: "[ -f .env.local ]"
-        msg: ".env.local missing — run 'task env:init' first."
+      - sh: "[ -f .env.symfony ]"
+        msg: ".env.symfony missing — run 'task env:init' first."
     cmds:
       - |
         VERSION=$(grep ^OS2DISPLAY_VERSION_API= .env | cut -d= -f2)
         IMAGE="ghcr.io/os2display/display-api-service:${VERSION}"
         tmp=$(mktemp)
         docker run --rm --entrypoint sh "$IMAGE" -c 'cat /var/www/html/.env' > "$tmp"
-        diff -u .env.local "$tmp" || true
+        diff -u .env.symfony "$tmp" || true
         rm -f "$tmp"
 
   env:migrate:
-    desc: Convert a 2.x .env.docker.local into a 3.x-shaped .env.local.migrated (review, then mv into place)
+    desc: Convert a 2.x .env.docker.local into a 3.x-shaped .env.symfony.migrated (review, then mv into place)
     cmds:
       - |
         if [ -f .env.docker.local ]; then
@@ -164,12 +165,16 @@ tasks:
           echo "Error: neither .env.docker.local nor .env.local exists."
           exit 1
         fi
-        OUT=.env.local.migrated
+        OUT=.env.symfony.migrated
         # Strip APP_ prefix from every key except APP_ENV and APP_SECRET (those stay).
         sed -E '/^APP_(ENV|SECRET)=/!s/^APP_([A-Z_][A-Z0-9_]*=)/\1/' "$SRC" > "$OUT"
         echo "Wrote $OUT (from $SRC)."
         echo "Review with: diff -u $SRC $OUT"
-        echo "Apply with:  mv $OUT .env.local"
+        echo "Apply with:  mv $OUT .env.symfony"
+        echo "Note: this only contains Symfony app config. PHP_*, NGINX_*, MARIADB_*"
+        echo "values from your old .env.docker.local belong in .env.php, .env.nginx,"
+        echo "and .env.mariadb respectively — copy from the .production.example files"
+        echo "and edit per your deployment."
 
   db:backup:
     desc: Dump the bundled MariaDB to ./backup/<timestamp>.sql.gz (online, --single-transaction)
@@ -181,9 +186,9 @@ tasks:
     cmds:
       - mkdir -p backup
       - |
-        ROOT_PASSWORD=$(grep ^MARIADB_ROOT_PASSWORD= .env | cut -d= -f2-)
+        ROOT_PASSWORD=$(grep ^MARIADB_ROOT_PASSWORD= .env.mariadb | cut -d= -f2-)
         if [ -z "$ROOT_PASSWORD" ]; then
-          echo "Error: MARIADB_ROOT_PASSWORD is empty in .env"
+          echo "Error: MARIADB_ROOT_PASSWORD is empty in .env.mariadb"
           exit 1
         fi
         TS=$(date -u +%Y%m%dT%H%M%SZ)
@@ -202,9 +207,9 @@ tasks:
         msg: ".env missing — copy .env.example to .env first."
     cmds:
       - |
-        ROOT_PASSWORD=$(grep ^MARIADB_ROOT_PASSWORD= .env | cut -d= -f2-)
+        ROOT_PASSWORD=$(grep ^MARIADB_ROOT_PASSWORD= .env.mariadb | cut -d= -f2-)
         if [ -z "$ROOT_PASSWORD" ]; then
-          echo "Error: MARIADB_ROOT_PASSWORD is empty in .env"
+          echo "Error: MARIADB_ROOT_PASSWORD is empty in .env.mariadb"
           exit 1
         fi
         {{.COMPOSE}} exec -T mariadb mariadb-upgrade --user=root --password="$ROOT_PASSWORD"
@@ -314,7 +319,12 @@ tasks:
   _env_files:
     cmds:
       - |
-        if [ ! -f .env.traefik ]; then
-          echo ".env.traefik does not exist. Copying .env.traefik.example to .env.traefik..."
-          cp .env.traefik.example .env.traefik
-        fi
+        # Per-service env files bootstrap from their canonical .production.example
+        # template if not yet edited by the operator. .env.symfony is image-
+        # bootstrapped by `task env:init` and is not auto-created here.
+        for svc in php nginx mariadb traefik; do
+          if [ ! -f ".env.$svc" ]; then
+            echo ".env.$svc does not exist. Copying .env.$svc.production.example to .env.$svc..."
+            cp ".env.$svc.production.example" ".env.$svc"
+          fi
+        done

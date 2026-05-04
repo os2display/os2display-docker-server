@@ -86,18 +86,24 @@ Without a valid domain name and SSL certificate, the project will not function a
 This setup separates orchestration config (read by docker compose) from application config (passed
 to the API container):
 
+Each service reads its own env file. Production examples checked into the repo are the canonical
+templates:
+
 | File | Purpose | Bootstrap |
 |---|---|---|
-| `.env` | Orchestration: project name, domain, image versions, profile toggles, MariaDB credentials, PHP runtime tuning. Read by `docker compose` for variable substitution. | `cp .env.example .env` |
-| `.env.local` | Application config for the API service: `APP_SECRET`, `DATABASE_URL`, JWT, OIDC, Redis, calendar feed, admin/client settings, etc. Mounted into the `os2display` container via `env_file:`. | `task env:init` (extracts the annotated example shipped in the API image) |
-| `.env.traefik` | Traefik dashboard auth, Let's Encrypt email, cert provider. | `task traefik_env` (interactive) or `cp .env.traefik.example .env.traefik` |
+| `.env` | Compose orchestration only — project name, profile, image versions, server domain. Read by `docker compose` for substitution into the YAML. | `cp .env.example .env` |
+| `.env.symfony` | Symfony app config for the os2display container: `APP_SECRET`, `DATABASE_URL`, `JWT_*`, `INTERNAL_OIDC_*`, `EXTERNAL_OIDC_*`, `ADMIN_*`, `CLIENT_*`, calendar feed, etc. | `task env:init` (extracts `/var/www/html/.env` from the API image — the upstream-canonical source) |
+| `.env.php` | PHP-FPM runtime tuning consumed by the php-fpm base image: `PHP_MEMORY_LIMIT`, `PHP_OPCACHE_*`, `PHP_PM_*`, etc. | `cp .env.php.production.example .env.php` (or auto-created by `task install`) |
+| `.env.nginx` | nginx runtime tuning: `NGINX_MAX_BODY_SIZE`, etc. | `cp .env.nginx.production.example .env.nginx` |
+| `.env.mariadb` | MariaDB credentials. Must match the `DATABASE_URL` user/password in `.env.symfony`. | `cp .env.mariadb.production.example .env.mariadb` |
+| `.env.traefik` | Traefik dashboard auth, Let's Encrypt email, cert provider. | `task traefik_env` (interactive) or `cp .env.traefik.production.example .env.traefik` |
 
 Edit each file before running `task install`.
 
-`task env:diff` compares your `.env.local` against the example shipped in the currently-pinned
+`task env:diff` compares your `.env.symfony` against the example shipped in the currently-pinned
 API image. `task env:migrate` rewrites a 2.x `.env.docker.local` (or an APP_-prefixed
-`.env.local`) into the v3 bare-name format — output goes to `.env.local.migrated` for review
-before applying.
+`.env.local`) into the v3 bare-name format for `.env.symfony` — output goes to
+`.env.symfony.migrated` for review before applying.
 
 ### Stack composition
 
@@ -153,16 +159,27 @@ important tasks you can run:
 
 Before running `task install`, ensure the following:
 
-1. `cp .env.example .env` and set your `OS2DISPLAY_SERVER_DOMAIN`, `OS2DISPLAY_VERSION_API`, and
-   MariaDB credentials.
-2. `task env:init` to extract the annotated `.env.local` from the API image. Then edit it: set
-   `APP_SECRET`, `JWT_PASSPHRASE`, `DATABASE_URL`, OIDC values, plus any `ADMIN_*` / `CLIENT_*`
-   overrides you need (login methods, color scheme, screen-status visibility, etc.). The defaults
-   from the image are sane enough to install and log in. (Operators upgrading from 2.x: run
-   `task env:migrate` first to rename `APP_*` keys.)
-3. Run `task traefik_env` to configure the Traefik dashboard credentials and Let's Encrypt email
-   (or copy `.env.traefik.example` to `.env.traefik` and edit by hand).
-4. If using a custom SSL certificate (`SERVER_CERT_PROVIDER=cert-file`), place `docker.crt` and
+1. `cp .env.example .env` and set `OS2DISPLAY_SERVER_DOMAIN`, `OS2DISPLAY_VERSION_API`, and
+   `COMPOSE_PROFILES`.
+2. `task env:init` to extract `.env.symfony` from the API image. Edit it: set `APP_SECRET`,
+   `JWT_PASSPHRASE`, `DATABASE_URL`, OIDC values, plus any `ADMIN_*` / `CLIENT_*` overrides you
+   need (login methods, color scheme, screen-status visibility, etc.). The image defaults
+   suffice for a working install. (Operators upgrading from 2.x: run `task env:migrate` first to
+   rename `APP_*` keys.)
+3. Copy the per-service production examples (`task install` auto-creates any you forget from
+   their `.production.example` template):
+
+   ```bash
+   cp .env.php.production.example .env.php
+   cp .env.nginx.production.example .env.nginx
+   cp .env.mariadb.production.example .env.mariadb       # if COMPOSE_PROFILES contains mariadb
+   ```
+
+   Edit `.env.php` and `.env.mariadb` for production: set non-default credentials, raise
+   `PHP_MEMORY_LIMIT` per workload, etc.
+4. Run `task traefik_env` to configure the Traefik dashboard credentials and Let's Encrypt email
+   (or copy `.env.traefik.production.example` to `.env.traefik` and edit by hand).
+5. If using a custom SSL certificate (`SERVER_CERT_PROVIDER=cert-file`), place `docker.crt` and
    `docker.key` in `traefik/ssl/`.
 
 For a full list of tasks, run:
