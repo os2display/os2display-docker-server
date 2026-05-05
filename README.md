@@ -669,12 +669,12 @@ The repo is a thin wrapper around upstream tooling. The constraints we work unde
 
 Working on this repo is the same as running it as an operator, with two extras:
 
-- **The `dev` compose profile** activates the `markdownlint` and `prettier` services for local
-  linting. The `dev:lint*` Task family wraps them:
+- **The `dev` compose profile** activates the `markdownlint`, `prettier`, and `shellcheck`
+  services for local linting. The `dev:lint*` Task family wraps them:
 
   ```bash
-  task dev:lint        # Markdown + YAML check
-  task dev:lint:fix    # auto-fix both
+  task dev:lint        # Markdown + YAML + Shell check
+  task dev:lint:fix    # auto-fix Markdown + YAML (shellcheck has no fix mode)
   ```
 
   Run these before opening a PR; CI runs the same checks on every push.
@@ -690,7 +690,7 @@ Working on this repo is the same as running it as an operator, with two extras:
 
   Or use `SERVER_CERT_PROVIDER=cert-file` with a self-signed cert.
 
-Standard fork-and-PR flow. PRs run three CI workflows (Markdown, YAML, Compose). The Compose
+Standard fork-and-PR flow. PRs run four CI workflows (Markdown, YAML, Shell, Compose). The Compose
 workflow is the most likely to surface issues — it asserts that every pinned image is
 reachable on its registry and every `${VAR}` reference in `docker-compose.yml` resolves.
 
@@ -716,11 +716,18 @@ reachable on its registry and every `${VAR}` reference in `docker-compose.yml` r
 │   ├── ssl/                                 # operator-supplied custom certs (gitignored)
 │   └── letsencrypt/                         # acme.json storage (gitignored)
 │
+├── scripts/                                 # extracted helpers for the longer
+│   ├── host-resources.sh                    # compose tasks; lint via `task dev:lint:sh`
+│   ├── host-php.sh
+│   ├── logs-disk.sh
+│   └── env-traefik.sh
+│
 ├── jwt/                                     # JWT keypair storage (gitignored)
 ├── media/                                   # media bind mount (gitignored)
 ├── backup/                                  # task db:backup output (gitignored)
 │
-├── .github/workflows/                       # CI: markdown.yaml, yaml.yaml, compose.yaml
+├── .github/workflows/                       # CI: markdown.yaml, yaml.yaml,
+│                                            # sh.yaml, compose.yaml
 │
 ├── .markdownlint.jsonc                      # linter configs (synced from
 ├── .markdownlintignore                      # itk-dev/devops_itkdev-docker)
@@ -738,10 +745,11 @@ Markdown + YAML in CI. The linter services are gated behind the `dev` compose pr
 don't bloat production starts. Run via Task:
 
 ```bash
-task dev:lint                  # check both Markdown and YAML
+task dev:lint                  # check Markdown + YAML + Shell
 task dev:lint:md               # check Markdown only
 task dev:lint:yaml             # check YAML only
-task dev:lint:fix              # auto-fix both (review the diff before committing)
+task dev:lint:sh               # shellcheck scripts/*.sh (no fix mode)
+task dev:lint:fix              # auto-fix Markdown + YAML (review the diff before committing)
 task dev:lint:md:fix           # auto-fix Markdown only (markdownlint --fix)
 task dev:lint:yaml:fix         # auto-fix YAML only (prettier --write)
 ```
@@ -766,11 +774,14 @@ file-copy header at the top of each lints config preserves provenance for sync.
 
 ### CI workflows
 
-`.github/workflows/`, three files:
+`.github/workflows/`, four files:
 
 - **`markdown.yaml`** — runs markdownlint via `docker compose --profile dev run --rm
   markdownlint`. Catches doc rot.
 - **`yaml.yaml`** — runs prettier via the same pattern. Catches YAML drift.
+- **`sh.yaml`** — runs shellcheck against `scripts/*.sh` via the `shellcheck` dev-profile
+  service. Catches shell footguns in the extracted helpers (unquoted vars, masked exit
+  codes, etc.).
 - **`compose.yaml`** — three jobs:
   1. `compose-config` — synthesises the stack with example env files + a stub `.env.symfony`.
      Catches typos and dangling `${VAR}` references.
@@ -780,7 +791,7 @@ file-copy header at the top of each lints config preserves provenance for sync.
      `.env.example` or `.env.traefik.production.example`. Catches the silent-empty
      substitution case.
 
-All three trigger on `pull_request` and pushes to `main` / `develop` / `release/**`.
+All four trigger on `pull_request` and pushes to `main` / `develop` / `release/**`.
 
 ---
 
