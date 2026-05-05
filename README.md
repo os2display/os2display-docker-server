@@ -1,16 +1,20 @@
 # OS2display v3 Hosting and Deployment
 
-This is a deployment tool designed for hosting the OS2display application using Docker. It provides a Docker Compose 
-based setup, pre-configured files, and task automation to simplify the deployment and management of the application.
+This is a deployment tool designed for hosting the OS2display application using Docker. It
+provides a Docker Compose based setup, pre-configured files, and task automation to simplify the
+deployment and management of the application.
 
 ## Prerequisites
 
 Before you begin, ensure you have the following installed on your system:
+
 1. **Docker**: Install Docker Engine (version 20.10 or later).
 2. **Docker Compose**: Use Docker Compose v2 (integrated with the `docker compose` command).
-3. **Task**: Install the Taskfile CLI tool. You can find installation instructions at [taskfile.dev](https://taskfile.dev/#/installation).
+3. **Task**: Install the Taskfile CLI tool. You can find installation instructions at
+   [taskfile.dev](https://taskfile.dev/#/installation).
 
-Make sure your user has the necessary permissions to run Docker commands (e.g., being part of the `docker` group).
+Make sure your user has the necessary permissions to run Docker commands (e.g., being part of the
+`docker` group).
 
 ### Check Prerequisites
 
@@ -34,11 +38,15 @@ The bind mounts have two readers/writers with different UIDs:
 - The `os2display` (api) container writes media and reads JWT keys as **UID 1042** (`deploy`).
 - The `nginx-api` container reads media to serve them as **UID 101** (`nginx-unprivileged`).
 
-To prevent permission issues, install the application as a host user with UID 1042 and GID 1042 — that user will own everything written into `./media` and `./jwt`. The host directory must also be readable by UID 101 (nginx); the simplest setup is to make `./media` group-readable with group 1042, since UID 101 inside the nginx container can read group-readable files via the supplementary-group bridge that `chmod g+r` provides on a typical Linux host. If you see broken thumbnails or 404s on uploaded images, double-check the `./media` permissions before anything else.
+To prevent permission issues, install the application as a host user with UID 1042 and GID 1042 —
+that user will own everything written into `./media` and `./jwt`. The host directory must also be
+readable by UID 101 (nginx); the simplest setup is to make `./media` group-readable with group
+1042, since UID 101 inside the nginx container can read group-readable files via the
+supplementary-group bridge that `chmod g+r` provides on a typical Linux host. If you see broken
+thumbnails or 404s on uploaded images, double-check the `./media` permissions before anything
+else.
 
 Create a host user with UID 1042 and GID 1042 (any name works — `deploy` by convention):
-
-Here’s how to create the user:
 
 ```bash
 # Create group and user with UID/GID 1042
@@ -54,22 +62,29 @@ sudo usermod -aG docker deploy
 
 ### Secure Mode Requirement
 
-This project can only run in secure mode using HTTPS (port 443). A Traefik reverse proxy will handle HTTPS using either
-* Let's encrypt certificates (default) 
-* Custom certificate/key files
+This project can only run in secure mode using HTTPS (port 443). A Traefik reverse proxy will
+handle HTTPS using either:
 
-### Steps to Configure Secure Mode:
-1. **Domain Name**: Use a fully qualified domain name (FQDN) that resolves to your server's IP address.
+- Let's encrypt certificates (default)
+- Custom certificate/key files
+
+### Steps to Configure Secure Mode
+
+1. **Domain Name**: Use a fully qualified domain name (FQDN) that resolves to your server's IP
+   address.
 2. **SSL Certificate**, either:
    - Let traefik generate a certificate using Let's Encrypt (default).
-   - Place the certificate file (`docker.crt`) and the private key file (`docker.key`) in the `traefik/ssl` directory.
-3. **Update Configuration**: Ensure the domain name is correctly configured in `.env` (`OS2DISPLAY_SERVER_DOMAIN`).
+   - Place the certificate file (`docker.crt`) and the private key file (`docker.key`) in the
+     `traefik/ssl` directory.
+3. **Update Configuration**: Ensure the domain name is correctly configured in `.env`
+   (`OS2DISPLAY_SERVER_DOMAIN`).
 
 Without a valid domain name and SSL certificate, the project will not function as expected.
 
 ## Configuration files
 
-This setup separates orchestration config (read by docker compose) from application config (passed to the API container):
+This setup separates orchestration config (read by docker compose) from application config (passed
+to the API container):
 
 | File | Purpose | Bootstrap |
 |---|---|---|
@@ -79,11 +94,17 @@ This setup separates orchestration config (read by docker compose) from applicat
 
 Edit each file before running `task install`.
 
-`task env:diff` compares your `.env.local` against the example shipped in the currently-pinned API image. `task env:migrate` rewrites a 2.x `.env.docker.local` (or an APP_-prefixed `.env.local`) into the v3 bare-name format — output goes to `.env.local.migrated` for review before applying.
+`task env:diff` compares your `.env.local` against the example shipped in the currently-pinned
+API image. `task env:migrate` rewrites a 2.x `.env.docker.local` (or an APP_-prefixed
+`.env.local`) into the v3 bare-name format — output goes to `.env.local.migrated` for review
+before applying.
 
 ### Stack composition
 
-`COMPOSE_PROFILES` in `.env` controls which built-in infrastructure services start. Core services (`os2display`, `nginx-api`, `redis`) always run. The admin UI and screen client are bundled into the `os2display` image in 3.x and served as Symfony routes — there are no separate `admin` / `client` containers.
+`COMPOSE_PROFILES` in `.env` controls which built-in infrastructure services start. Core services
+(`os2display`, `nginx-api`, `redis`) always run. The admin UI and screen client are bundled into
+the `os2display` image in 3.x and served as Symfony routes — there are no separate `admin` /
+`client` containers.
 
 | `COMPOSE_PROFILES` value | Built-in services started | Use when |
 |---|---|---|
@@ -96,51 +117,94 @@ Edit each file before running `task install`.
 
 ## Available Tasks
 
-The project uses a `Taskfile.yml` to simplify common operations. Below is a list of the most important tasks you can run:
+The project uses a `Taskfile.yml` to simplify common operations. Below is a list of the most
+important tasks you can run:
 
 ### Installation and Setup
-- **`task traefik_env`**: Configures Traefik to use Let's Encrypt certificates or custom certificates.
-- **`task install`**: Installs the project, pulls Docker images, sets up the database, and initializes the environment.
-- **`task reinstall`**: Reinstalls the project from scratch, removing all containers, volumes, and the database.
+
+- **`task traefik_env`**: Configures Traefik to use Let's Encrypt certificates or custom
+  certificates.
+- **`task install`**: Installs the project, pulls Docker images, sets up the database, and
+  initializes the environment.
+- **`task reinstall`**: Reinstalls the project from scratch, removing all containers, volumes, and
+  the database.
 - **`task up`**: Starts the environment without altering the existing state of the containers.
 - **`task down`**: Stops and removes all containers and volumes.
 
 ### Tenant and User Management
-- **`task tenant_add`**: Adds a new tenant group. A tenant is a group of users that share the same configuration.
+
+- **`task tenant_add`**: Adds a new tenant group. A tenant is a group of users that share the same
+  configuration.
 - **`task user_add`**: Adds a new user (editor or admin) to a tenant.
 
 ### Templates and Screen Layouts
-- **`task load_templates`**: Installs the templates and screen layouts bundled in the API image (`app:templates:install --all --update` and `app:screen-layouts:install --all --update --cleanupRegions`). 3.x ships templates inside the image — there is no longer a list of names or a version pin in `.env`.
+
+- **`task load_templates`**: Installs the templates and screen layouts bundled in the API image
+  (`app:templates:install --all --update` and `app:screen-layouts:install --all --update
+  --cleanupRegions`). 3.x ships templates inside the image — there is no longer a list of names or
+  a version pin in `.env`.
 
 ### Maintenance
+
 - **`task logs`**: Follows the logs from the Docker containers.
 - **`task cc`**: Clears the cache in the application.
 
 ### Pre-installation Notes
+
 Before running `task install`, ensure the following:
-1. `cp .env.example .env` and set your `OS2DISPLAY_SERVER_DOMAIN`, `OS2DISPLAY_VERSION_API`, and MariaDB credentials.
-2. `task env:init` to extract the annotated `.env.local` from the API image. Then edit it: set `APP_SECRET`, `JWT_PASSPHRASE`, `DATABASE_URL`, OIDC values, plus any `ADMIN_*` / `CLIENT_*` overrides you need (login methods, color scheme, screen-status visibility, etc.). The defaults from the image are sane enough to install and log in. (Operators upgrading from 2.x: run `task env:migrate` first to rename `APP_*` keys.)
-3. Run `task traefik_env` to configure the Traefik dashboard credentials and Let's Encrypt email (or copy `.env.traefik.example` to `.env.traefik` and edit by hand).
-4. If using a custom SSL certificate (`SERVER_CERT_PROVIDER=cert-file`), place `docker.crt` and `docker.key` in `traefik/ssl/`.
+
+1. `cp .env.example .env` and set your `OS2DISPLAY_SERVER_DOMAIN`, `OS2DISPLAY_VERSION_API`, and
+   MariaDB credentials.
+2. `task env:init` to extract the annotated `.env.local` from the API image. Then edit it: set
+   `APP_SECRET`, `JWT_PASSPHRASE`, `DATABASE_URL`, OIDC values, plus any `ADMIN_*` / `CLIENT_*`
+   overrides you need (login methods, color scheme, screen-status visibility, etc.). The defaults
+   from the image are sane enough to install and log in. (Operators upgrading from 2.x: run
+   `task env:migrate` first to rename `APP_*` keys.)
+3. Run `task traefik_env` to configure the Traefik dashboard credentials and Let's Encrypt email
+   (or copy `.env.traefik.example` to `.env.traefik` and edit by hand).
+4. If using a custom SSL certificate (`SERVER_CERT_PROVIDER=cert-file`), place `docker.crt` and
+   `docker.key` in `traefik/ssl/`.
 
 For a full list of tasks, run:
+
 ```bash
 task --list
 ```
 
+## Linting
+
+Markdown and YAML are linted in CI. To run the same checks locally:
+
+```bash
+docker compose --profile dev run --rm markdownlint markdownlint '**/*.md'
+docker compose --profile dev run --rm prettier '**/*.{yml,yaml}' --check
+```
+
+Configs: `.markdownlint.jsonc` + `.markdownlintignore` and `.prettierrc.yaml` + `.prettierignore`.
+Both are copies of the upstream
+[itk-dev/devops_itkdev-docker](https://github.com/itk-dev/devops_itkdev-docker) templates.
+
 ## Upgrading the bundled MariaDB across a major version
 
-A MariaDB major-version bump (e.g. 10.11 → 11.4) is binary-compatible at the data-file level — MariaDB 11 reads 10.x InnoDB tablespaces — but it is not a one-shot container restart. Three things have to happen for a clean cut:
+A MariaDB major-version bump (e.g. 10.11 → 11.4) is binary-compatible at the data-file level —
+MariaDB 11 reads 10.x InnoDB tablespaces — but it is not a one-shot container restart. Three
+things have to happen for a clean cut:
 
-1. **Take a backup.** `task db:backup` writes `./backup/<timestamp>.sql.gz` using `mariadb-dump --single-transaction`, no service downtime.
-2. **Pull the new image, restart the DB, run the upgrade.** The official `mariadb` image's entrypoint auto-runs `mariadb-upgrade` when it detects a version bump on existing data, but running it explicitly afterwards via `task db:upgrade` is a cheap belt-and-suspenders sanity step. Errors in `mariadb-upgrade` surface only at query time later if skipped.
-3. **Update `DATABASE_URL` `serverVersion=` in `.env.local`.** Doctrine uses this to pick its SQL dialect — a mismatch produces subtly wrong queries (most often: incorrect JSON or function syntax). For 11.4: `serverVersion=11.4.10-MariaDB`.
+1. **Take a backup.** `task db:backup` writes `./backup/<timestamp>.sql.gz` using
+   `mariadb-dump --single-transaction`, no service downtime.
+2. **Pull the new image, restart the DB, run the upgrade.** The official `mariadb` image's
+   entrypoint auto-runs `mariadb-upgrade` when it detects a version bump on existing data, but
+   running it explicitly afterwards via `task db:upgrade` is a cheap belt-and-suspenders sanity
+   step. Errors in `mariadb-upgrade` surface only at query time later if skipped.
+3. **Update `DATABASE_URL` `serverVersion=` in `.env.local`.** Doctrine uses this to pick its SQL
+   dialect — a mismatch produces subtly wrong queries (most often: incorrect JSON or function
+   syntax). For 11.4: `serverVersion=11.4.10-MariaDB`.
 
 Recipe:
 
 ```bash
 task db:backup                    # ./backup/<ts>.sql.gz
-task stop                         # bring down dependents (api, nginx, admin, client)
+task stop                         # bring down dependents (api, nginx)
 
 # Edit OS2DISPLAY_VERSION_API / mariadb tag in docker-compose.yml or rely on this branch's pin.
 docker compose pull mariadb
@@ -156,7 +220,6 @@ task up                           # bring everything back up
 task cc                           # flush Doctrine's cached metadata
 ```
 
-If `task db:upgrade` reports incompatible objects, restore from the dump (`gunzip < backup/<ts>.sql.gz | docker compose exec -T mariadb mariadb -u root -p$MARIADB_ROOT_PASSWORD`) and roll back to the previous image before debugging.
-
-
-
+If `task db:upgrade` reports incompatible objects, restore from the dump
+(`gunzip < backup/<ts>.sql.gz | docker compose exec -T mariadb mariadb -u root -p$MARIADB_ROOT_PASSWORD`)
+and roll back to the previous image before debugging.

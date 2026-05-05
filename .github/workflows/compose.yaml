@@ -1,0 +1,100 @@
+### ### Compose
+###
+### Three pre-merge gates against `docker-compose.yml`:
+###
+###   1. `compose-config`     The compose file synthesises with the example
+###                            env files (`.env.example`, `.env.traefik.example`,
+###                            stub `.env.local`). Catches typos and dangling
+###                            `${VAR}` references.
+###
+###   2. `image-availability`  Every pinned image exists on its registry.
+###                            Catches a tag that didn't ship — the v3 image
+###                            line is fresh and could be re-tagged or pulled.
+###
+###   3. `env-coverage`        Every `${VAR}` reference in `docker-compose.yml`
+###                            without a `:-default` is declared in
+###                            `.env.example` or `.env.traefik.example`.
+###                            Catches silent-empty substitutions.
+
+name: Compose
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - develop
+      - "release/**"
+
+jobs:
+  compose-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Stage example env files for synthesis
+        run: |
+          cp .env.example .env
+          cp .env.traefik.example .env.traefik
+          touch .env.local
+
+      - name: Validate docker compose config
+        run: docker compose --env-file .env --env-file .env.traefik config --quiet
+
+  image-availability:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Inspect each pinned image (buildx imagetools)
+        run: |
+          set -eu
+          # Extract `image:` lines and resolve operator-tunable tags
+          # (e.g. ghcr.io/.../display-api-service:${OS2DISPLAY_VERSION_API})
+          # against defaults in .env.example.
+          set -a; . ./.env.example; set +a
+          IMAGES=$(grep -E '^[[:space:]]+image:[[:space:]]' docker-compose.yml \
+            | sed -E 's/^[[:space:]]+image:[[:space:]]+//' \
+            | envsubst)
+          fail=0
+          # buildx imagetools inspect is more robust than `docker manifest
+          # inspect` against transient registry storage failures and is
+          # preinstalled on every GitHub Actions runner.
+          while IFS= read -r image; do
+            [ -z "$image" ] && continue
+            echo "Inspecting $image"
+            if ! docker buildx imagetools inspect "$image" >/dev/null 2>&1; then
+              echo "::error::Image not available: $image"
+              fail=1
+            fi
+          done <<< "$IMAGES"
+          [ "$fail" = "0" ]
+
+  env-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Every ${VAR} without a default is declared in an example env file
+        run: |
+          set -eu
+          # Bare ${VAR} references (no :-default, no :?err)
+          grep -oE '\$\{[A-Z_][A-Z0-9_]*\}' docker-compose.yml \
+            | tr -d '${}' | sort -u > /tmp/refs.txt
+
+          # Names declared in any committed example
+          {
+            grep -hE '^[A-Z_][A-Z0-9_]*=' .env.example
+            grep -hE '^[A-Z_][A-Z0-9_]*=' .env.traefik.example
+          } | cut -d= -f1 | sort -u > /tmp/defined.txt
+
+          # Names referenced bare but never declared
+          missing=$(comm -23 /tmp/refs.txt /tmp/defined.txt)
+          if [ -n "$missing" ]; then
+            echo "::error::Undefined env vars referenced in docker-compose.yml:"
+            echo "$missing"
+            echo
+            echo "Declare them in .env.example or .env.traefik.example, or use \${VAR:-default} in compose."
+            exit 1
+          fi
+          echo "All bare \${VAR} references are accounted for."

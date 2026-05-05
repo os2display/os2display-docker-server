@@ -1,4 +1,4 @@
-version: '3'
+version: "3"
 silent: true
 
 vars:
@@ -38,9 +38,9 @@ tasks:
   install:
     desc: Install the project
     preconditions:
-      - sh: '[ -f .env ]'
+      - sh: "[ -f .env ]"
         msg: ".env missing — copy .env.example to .env, edit it, then re-run."
-      - sh: '[ -f .env.local ]'
+      - sh: "[ -f .env.local ]"
         msg: ".env.local missing — run 'task env:init' to bootstrap from the image, edit it, then re-run."
     deps:
       - _env_files
@@ -123,7 +123,7 @@ tasks:
   env:init:
     desc: Bootstrap .env.local from the API image (run once on first install)
     preconditions:
-      - sh: '[ -f .env ]'
+      - sh: "[ -f .env ]"
         msg: ".env missing — copy .env.example to .env first."
       - sh: '! [ -f .env.local ] || [ "${FORCE:-0}" = "1" ]'
         msg: ".env.local already exists. Use 'task env:diff' to compare, or set FORCE=1 to overwrite."
@@ -139,9 +139,9 @@ tasks:
   env:diff:
     desc: Compare .env.local against the example shipped in the current API image
     preconditions:
-      - sh: '[ -f .env ]'
+      - sh: "[ -f .env ]"
         msg: ".env missing — copy .env.example to .env first."
-      - sh: '[ -f .env.local ]'
+      - sh: "[ -f .env.local ]"
         msg: ".env.local missing — run 'task env:init' first."
     cmds:
       - |
@@ -174,9 +174,9 @@ tasks:
   db:backup:
     desc: Dump the bundled MariaDB to ./backup/<timestamp>.sql.gz (online, --single-transaction)
     preconditions:
-      - sh: '[ -f .env ]'
+      - sh: "[ -f .env ]"
         msg: ".env missing — copy .env.example to .env first."
-      - sh: '[ -f .env.local ]'
+      - sh: "[ -f .env.local ]"
         msg: ".env.local missing — run 'task env:init' first."
     cmds:
       - mkdir -p backup
@@ -198,7 +198,7 @@ tasks:
   db:upgrade:
     desc: Run mariadb-upgrade against the bundled MariaDB (idempotent; run after a major version bump)
     preconditions:
-      - sh: '[ -f .env ]'
+      - sh: "[ -f .env ]"
         msg: ".env missing — copy .env.example to .env first."
     cmds:
       - |

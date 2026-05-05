@@ -144,6 +144,21 @@ services:
       - "traefik.http.routers.dashboard.service=api@internal"
       - "traefik.http.routers.dashboard.middlewares=dashboard-auth,security-headers@file"
 
+  markdownlint:
+    image: peterdavehello/markdownlint
+    profiles: [dev]
+    volumes:
+      - ./:/md
+
+  prettier:
+    # Prettier doesn't ship an official image
+    # (https://github.com/prettier/prettier/issues/15206); jauderho/prettier
+    # is a well-maintained community build.
+    image: jauderho/prettier
+    profiles: [dev]
+    volumes:
+      - ./:/work
+
   # socket-proxy: brokers Traefik's docker socket access. The highest-trust
   # container in the stack — it fronts the docker daemon over tcp://2375,
   # so it gets the most aggressive hardening profile. Rationale documented
@@ -175,7 +190,11 @@ services:
     # Probes /version so `docker compose up --wait` actually waits for the
     # proxy to be reachable before bringing dependent services up.
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:2375/version || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q --spider http://localhost:2375/version || exit 1",
+        ]
       interval: 30s
       timeout: 5s
       retries: 3

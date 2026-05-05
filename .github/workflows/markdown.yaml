@@ -1,0 +1,35 @@
+### ### Markdown
+###
+### Lints Markdown files (`**/*.md`) in the project.
+###
+### [markdownlint-cli configuration
+### files](https://github.com/igorshubovych/markdownlint-cli?tab=readme-ov-file#configuration),
+### `.markdownlint.jsonc` and `.markdownlintignore`, control what is actually
+### linted and how.
+###
+### #### Assumptions
+###
+### 1. A docker compose service named `markdownlint` (gated behind the `dev`
+###    profile) for running `markdownlint-cli` exists.
+
+name: Markdown
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - develop
+      - "release/**"
+
+jobs:
+  markdown-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Create external `frontend` network
+        run: docker network create frontend
+
+      - name: Lint markdown
+        run: docker compose --profile dev run --rm markdownlint markdownlint '**/*.md'
