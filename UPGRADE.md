@@ -164,7 +164,7 @@ $EDITOR .env.mariadb
 # means Doctrine can't connect, AND mariadb won't re-initialise its data dir with new ones.
 
 # Traefik: re-run the interactive setup task, or copy and edit by hand.
-task traefik_env
+task env:traefik
 ```
 
 #### 6. MariaDB 10.x → 11.4 upgrade

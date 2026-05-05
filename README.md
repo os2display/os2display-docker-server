@@ -92,7 +92,7 @@ cp .env.mariadb.production.example .env.mariadb     # only if running bundled ma
 $EDITOR .env.php .env.mariadb                        # set production credentials, tune as needed
 
 # 4. Traefik dashboard auth + Let's Encrypt email (interactive prompts).
-task traefik_env
+task env:traefik
 
 # 5. Bring the stack up: pulls images, runs migrations, prompts for
 #    initial tenant + admin user, installs bundled templates.
@@ -115,7 +115,7 @@ templates; edit your local copy, never the committed one.
 | `.env.php` | os2display | PHP-FPM runtime tuning — `PHP_MEMORY_LIMIT`, `PHP_OPCACHE_*`, `PHP_PM_*`. | `cp .env.php.production.example .env.php` |
 | `.env.nginx` | nginx-api | Nginx runtime tuning — `NGINX_MAX_BODY_SIZE`, etc. | `cp .env.nginx.production.example .env.nginx` |
 | `.env.mariadb` | mariadb | MariaDB credentials. Must match the `DATABASE_URL` user + password + database in `.env.symfony`. | `cp .env.mariadb.production.example .env.mariadb` |
-| `.env.traefik` | traefik | Dashboard auth, Let's Encrypt email, cert provider. | `task traefik_env` (interactive) or copy from `.env.traefik.production.example` |
+| `.env.traefik` | traefik | Dashboard auth, Let's Encrypt email, cert provider. | `task env:traefik` (interactive) or copy from `.env.traefik.production.example` |
 
 Why this split: each service's compose block has its own `env_file:` referring to one or two of
 these files. Vars don't leak across services, the compose file has no translation blocks, and
@@ -316,7 +316,7 @@ then pipe in the dump.
 #### How do I add a tenant?
 
 ```bash
-task tenant_add                      # interactive: prompts for tenant id, title, description
+task tenant:add                      # interactive: prompts for tenant id, title, description
 ```
 
 Tenants are groups of users sharing configuration (IT, Library, Schools, …). `task install`
@@ -325,7 +325,7 @@ prompts for the first tenant during install.
 #### How do I add a user?
 
 ```bash
-task user_add                        # interactive: email, password, role, tenant
+task user:add                        # interactive: email, password, role, tenant
 ```
 
 Roles are `editor` or `admin`. Editors create slides + screens within their tenant; admins
@@ -334,7 +334,7 @@ manage tenant-level config too.
 #### How do I install or update bundled templates?
 
 ```bash
-task load_templates
+task templates:install
 ```
 
 Runs `bin/console app:templates:install --all --update` and
@@ -391,7 +391,7 @@ service. A runaway container can't fill the host disk.
 #### How do I clear the application cache?
 
 ```bash
-task cc                              # bin/console cache:clear inside os2display
+task cache:clear                     # bin/console cache:clear inside os2display
 ```
 
 Run after editing `.env.symfony` (Doctrine and Symfony cache resolved-config), after upgrading
@@ -549,14 +549,14 @@ The repo is a thin wrapper around upstream tooling. The constraints we work unde
 Working on this repo is the same as running it as an operator, with two extras:
 
 - **The `dev` compose profile** activates the `markdownlint` and `prettier` services for local
-  linting:
+  linting. The `dev:lint*` Task family wraps them:
 
   ```bash
-  docker compose --profile dev run --rm markdownlint markdownlint '**/*.md'
-  docker compose --profile dev run --rm prettier '**/*.{yml,yaml}' --check
+  task dev:lint        # Markdown + YAML check
+  task dev:lint:fix    # auto-fix both
   ```
 
-  Run these before opening a PR; CI runs them on every push.
+  Run these before opening a PR; CI runs the same checks on every push.
 
 - **Test against a throwaway domain.** The stack only runs in HTTPS mode (Traefik forces it).
   For local-host testing, use the Let's Encrypt staging server (lower rate limit, untrusted
@@ -614,14 +614,22 @@ cert provider means adding a new pair of files, not touching compose or Task.
 ### Linting
 
 Markdown + YAML in CI. The linter services are gated behind the `dev` compose profile so they
-don't bloat production starts:
+don't bloat production starts. Run via Task:
+
+```bash
+task dev:lint                  # check both Markdown and YAML
+task dev:lint:md               # check Markdown only
+task dev:lint:yaml             # check YAML only
+task dev:lint:fix              # auto-fix both (review the diff before committing)
+task dev:lint:md:fix           # auto-fix Markdown only (markdownlint --fix)
+task dev:lint:yaml:fix         # auto-fix YAML only (prettier --write)
+```
+
+Or invoke the underlying compose commands directly (what CI uses):
 
 ```bash
 docker compose --profile dev run --rm markdownlint markdownlint '**/*.md'
 docker compose --profile dev run --rm prettier '**/*.{yml,yaml}' --check
-
-# auto-fix YAML formatting (use sparingly; review the diff):
-docker compose --profile dev run --rm prettier '**/*.{yml,yaml}' --write
 ```
 
 Configs:
@@ -660,32 +668,60 @@ All three trigger on `pull_request` and pushes to `main` / `develop` / `release/
 ### All tasks
 
 ```text
-Bootstrap
-  env:init        Bootstrap .env.symfony from the API image
-  env:diff        Compare .env.symfony to the example shipped in the image
-  env:migrate     Convert a 2.x .env.docker.local to a 3.x .env.symfony
-  traefik_env     Setup .env.traefik (domain, email, dashboard auth)
-
 Lifecycle
-  install         Install the project (interactive: tenant + admin user)
-  reinstall       Reinstall from scratch. WARNING: deletes the database!
-  update          Pull updated images, recreate containers, run app:update
-  up              Start the environment
-  down            Remove all containers (preserves named volumes)
-  purge           Remove all containers and volumes. WARNING: deletes the database!
-  stop            Stop all containers
+  install              Install the project — first-time setup (interactive)
+  update               Pull images, recreate containers, run app:update
+  up                   Start the stack without recreating containers
+  down                 Remove all containers (preserves named volumes)
+  stop                 Stop all containers
+  purge                Remove all containers AND named volumes  (prompts)
+  reinstall            purge + install                          (prompts)
+
+Bootstrap and env-file tooling
+  env:init             Bootstrap .env.symfony from the API image
+  env:diff             Compare .env.symfony against the image's shipped example
+  env:migrate          Convert a 1.x .env.docker.local to .env.symfony.migrated
+  env:traefik          Interactive .env.traefik setup            (alias: traefik_env)
 
 Operations
-  logs            Follow docker logs
-  cc              Clear the application cache
-  tenant_add      Add a tenant group (interactive)
-  user_add        Add a user — editor or admin (interactive)
-  load_templates  Install bundled templates and screen layouts
-  db:backup       Dump the bundled MariaDB to ./backup/<UTC-ts>.sql.gz
-  db:upgrade      Run mariadb-upgrade after a MariaDB major bump
+  logs                 Follow docker logs (last 50 lines)
+  console              Run any bin/console command in os2display  (e.g. `task console -- list`)
+  cache:clear          Clear the application cache               (alias: cc)
+  tenant:add           Add a tenant group (interactive)          (alias: tenant_add)
+  user:add             Add a user — editor or admin (interactive)(alias: user_add)
+  templates:install    Install bundled templates + screen layouts(alias: load_templates)
+  db:backup            Dump the bundled MariaDB to ./backup/<UTC-ts>.sql.gz
+  db:upgrade           Run mariadb-upgrade after a MariaDB major bump
+
+Dev tooling
+  dev:lint             Check Markdown + YAML
+  dev:lint:fix         Auto-fix Markdown + YAML
+  dev:lint:md          Check Markdown only
+  dev:lint:md:fix      Auto-fix Markdown only
+  dev:lint:yaml        Check YAML only (Prettier --check)
+  dev:lint:yaml:fix    Auto-fix YAML (Prettier --write)
 ```
 
-`task --list` for the canonical list with tab-completion-friendly output.
+`task --list` shows the canonical list with aliases. Internal helper tasks
+(`bootstrap-env-files`, `show-notes`) are hidden via `internal: true` and only
+called from other tasks.
+
+The aliased forms (`tenant_add`, `user_add`, `load_templates`, `cc`, `traefik_env`)
+remain as **deprecated aliases** for compatibility with operator scripts written
+against earlier releases. Prefer the canonical `:`-namespaced forms going forward.
+
+`task console -- <args>` is the generic Symfony CLI proxy. Use it for any one-off
+`bin/console` command that doesn't have its own dedicated task — e.g.:
+
+```bash
+task console -- list                                 # list all bin/console commands
+task console -- debug:router                         # inspect Symfony routes
+task console -- doctrine:migrations:status           # ad-hoc Doctrine ops
+```
+
+Tasks like `cache:clear`, `tenant:add`, `user:add`, and `templates:install` that
+proxy a single Symfony command are implemented as thin wrappers around
+`task console`, so the CLI surface stays consistent.
 
 ### Image registries
 

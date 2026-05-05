@@ -141,6 +141,48 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
 - Removed `SERVER_FRONTEND_NETWORK` from `.env.traefik.production.example`. The corresponding
   substitution on `traefik.networks` is gone.
 
+### Changed (operator surface) — Taskfile conventions
+
+- Task names follow the [official Taskfile guide](https://taskfile.dev/docs/guide) conventions:
+  `:`-namespaced for grouping, kebab-case for multi-word. Renames:
+
+  | Old | New | Old still works as |
+  |---|---|---|
+  | `cc` | `cache:clear` | alias |
+  | `tenant_add` | `tenant:add` | alias |
+  | `user_add` | `user:add` | alias |
+  | `load_templates` | `templates:install` | alias |
+  | `traefik_env` | `env:traefik` | alias |
+
+  Old names are kept as deprecated aliases for compatibility with operator scripts written
+  against earlier releases. Prefer the canonical `:`-namespaced forms going forward.
+- Internal helper tasks marked with `internal: true` instead of the `_`-prefix convention.
+  `_show_notes` → `show-notes`; `_env_files` → `bootstrap-env-files`. Hidden from
+  `task --list`; only callable from other tasks.
+- `purge` and `reinstall` now use Taskfile's
+  [warning prompts](https://taskfile.dev/docs/guide#warning-prompts). Both are destructive
+  (delete the bundled MariaDB volume) and require operator confirmation. Bypass via
+  `task --yes purge` for automation.
+
+### Added — generic Symfony CLI proxy
+
+- `task console` runs any `bin/console` command in the `os2display` container, e.g.
+  `task console -- debug:router`. Accepts `EXEC_FLAGS` for `docker compose exec`-level
+  flags (`-T`, `--user deploy`) and `CLI_ARGS` for the bin/console arguments.
+- `cache:clear`, `tenant:add`, `user:add`, and `templates:install` reimplemented as thin
+  wrappers around `task: console` instead of carrying their own
+  `{{.COMPOSE}} exec … bin/console …` lines. The compose-exec recipe lives in one
+  place; tasks are pure metadata + arg passing.
+- The `bin/console app:update` and `bin/console lexik:jwt:generate-keypair` calls inside
+  `task install` and `task update` also route through `task console`.
+
+### Added — dev-tooling task family
+
+- `dev:lint`, `dev:lint:md`, `dev:lint:md:fix`, `dev:lint:yaml`, `dev:lint:yaml:fix`,
+  `dev:lint:fix`. Wraps the existing `markdownlint` and `prettier` `dev`-profile services.
+  CI workflows still call docker compose directly (no Task dependency on runners); the Task
+  wrappers are local-dev convenience.
+
 ### Documentation
 
 - README rewritten end-to-end. Split into **Operator guide** (prerequisites, quick start,
