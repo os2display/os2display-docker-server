@@ -685,6 +685,7 @@ Bootstrap and env-file tooling
 
 Operations
   logs                 Follow docker logs (last 50 lines)
+  console              Run any bin/console command in os2display  (e.g. `task console -- list`)
   cache:clear          Clear the application cache               (alias: cc)
   tenant:add           Add a tenant group (interactive)          (alias: tenant_add)
   user:add             Add a user — editor or admin (interactive)(alias: user_add)
@@ -708,6 +709,19 @@ called from other tasks.
 The aliased forms (`tenant_add`, `user_add`, `load_templates`, `cc`, `traefik_env`)
 remain as **deprecated aliases** for compatibility with operator scripts written
 against earlier releases. Prefer the canonical `:`-namespaced forms going forward.
+
+`task console -- <args>` is the generic Symfony CLI proxy. Use it for any one-off
+`bin/console` command that doesn't have its own dedicated task — e.g.:
+
+```bash
+task console -- list                                 # list all bin/console commands
+task console -- debug:router                         # inspect Symfony routes
+task console -- doctrine:migrations:status           # ad-hoc Doctrine ops
+```
+
+Tasks like `cache:clear`, `tenant:add`, `user:add`, and `templates:install` that
+proxy a single Symfony command are implemented as thin wrappers around
+`task console`, so the CLI surface stays consistent.
 
 ### Image registries
 

@@ -164,6 +164,18 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
   (delete the bundled MariaDB volume) and require operator confirmation. Bypass via
   `task --yes purge` for automation.
 
+### Added — generic Symfony CLI proxy
+
+- `task console` runs any `bin/console` command in the `os2display` container, e.g.
+  `task console -- debug:router`. Accepts `EXEC_FLAGS` for `docker compose exec`-level
+  flags (`-T`, `--user deploy`) and `CLI_ARGS` for the bin/console arguments.
+- `cache:clear`, `tenant:add`, `user:add`, and `templates:install` reimplemented as thin
+  wrappers around `task: console` instead of carrying their own
+  `{{.COMPOSE}} exec … bin/console …` lines. The compose-exec recipe lives in one
+  place; tasks are pure metadata + arg passing.
+- The `bin/console app:update` and `bin/console lexik:jwt:generate-keypair` calls inside
+  `task install` and `task update` also route through `task console`.
+
 ### Added — dev-tooling task family
 
 - `dev:lint`, `dev:lint:md`, `dev:lint:md:fix`, `dev:lint:yaml`, `dev:lint:yaml:fix`,

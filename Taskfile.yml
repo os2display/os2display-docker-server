@@ -28,11 +28,13 @@ tasks:
       - echo "Waiting for database to be ready"
       - sleep 20
       - echo "Run database migrations and required updates"
-      - "{{.COMPOSE}} exec os2display bin/console app:update"
+      - task: console
+        vars: { CLI_ARGS: "app:update" }
       - echo "Clearing the cache"
       - task: cache:clear
       - echo "Create jwt key pair"
-      - "{{.COMPOSE}} exec os2display bin/console lexik:jwt:generate-keypair --skip-if-exists"
+      - task: console
+        vars: { CLI_ARGS: "lexik:jwt:generate-keypair --skip-if-exists" }
       - task: tenant:add
       - echo "CREATE AN ADMIN USER. CHOOSE THE TENANT YOU JUST CREATED."
       - task: user:add
@@ -46,7 +48,8 @@ tasks:
     cmds:
       - "{{.COMPOSE}} pull"
       - "{{.COMPOSE}} up --force-recreate --detach --remove-orphans"
-      - "{{.COMPOSE}} exec --user deploy os2display bin/console app:update"
+      - task: console
+        vars: { EXEC_FLAGS: "--user deploy", CLI_ARGS: "app:update" }
       - echo "NB! Run 'task templates:install' if the new image added templates."
 
   up:
@@ -98,11 +101,19 @@ tasks:
     cmds:
       - "{{.COMPOSE}} logs -f --tail=50"
 
+  console:
+    desc: "Run a Symfony bin/console command in the os2display container — e.g. `task console -- list`"
+    vars:
+      EXEC_FLAGS: ""
+    cmds:
+      - "{{.COMPOSE}} exec {{if .EXEC_FLAGS}}{{.EXEC_FLAGS}} {{end}}os2display bin/console {{.CLI_ARGS}}"
+
   cache:clear:
     desc: Clear the application cache
     aliases: [cc]
     cmds:
-      - "{{.COMPOSE}} exec os2display bin/console cache:clear"
+      - task: console
+        vars: { CLI_ARGS: "cache:clear" }
 
   tenant:add:
     desc: Add a new tenant group (interactive)
@@ -115,7 +126,8 @@ tasks:
       - echo "You have to provide tenant id, tenant title and optionally a description."
       - echo "===================================================="
       - echo ""
-      - "{{.COMPOSE}} exec -T os2display bin/console app:tenant:add"
+      - task: console
+        vars: { EXEC_FLAGS: "-T", CLI_ARGS: "app:tenant:add" }
 
   user:add:
     desc: Add a new user — editor or admin (interactive)
@@ -127,14 +139,25 @@ tasks:
       - echo "You have to provide email, password, full name, role (editor or admin) and the tenant id."
       - echo "===================================================="
       - echo ""
-      - "{{.COMPOSE}} exec -T os2display bin/console app:user:add"
+      - task: console
+        vars: { EXEC_FLAGS: "-T", CLI_ARGS: "app:user:add" }
 
   templates:install:
     desc: Install bundled templates and screen layouts (--all --update)
     aliases: [load_templates]
     cmds:
-      - "{{.COMPOSE}} exec --user deploy os2display bin/console app:templates:install --all --update"
-      - "{{.COMPOSE}} exec --user deploy os2display bin/console app:screen-layouts:install --all --update --cleanupRegions"
+      - task: console
+        vars:
+          {
+            EXEC_FLAGS: "--user deploy",
+            CLI_ARGS: "app:templates:install --all --update",
+          }
+      - task: console
+        vars:
+          {
+            EXEC_FLAGS: "--user deploy",
+            CLI_ARGS: "app:screen-layouts:install --all --update --cleanupRegions",
+          }
 
   # -- Env-file bootstrap & tooling -------------------------------------------
 
