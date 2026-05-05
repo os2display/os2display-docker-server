@@ -31,7 +31,7 @@ services:
       - app
     # Symfony app config (APP_SECRET, DATABASE_URL, JWT, OIDC, ADMIN_*,
     # CLIENT_*, ...) lives in .env.symfony — bootstrapped from the API image's
-    # /var/www/html/.env via `task env:init`.
+    # /app/.env via `task env:init`.
     # PHP-FPM runtime tuning lives in .env.php — copy from
     # .env.php.production.example.
     env_file:
@@ -46,8 +46,8 @@ services:
       retries: 3
       start_period: 30s
     volumes:
-      - ./jwt:/var/www/html/config/jwt:rw
-      - ./media:/var/www/html/public/media:rw
+      - ./jwt:/app/config/jwt:rw
+      - ./media:/app/public/media:rw
 
   nginx-api:
     image: ghcr.io/os2display/display-api-service-nginx:${OS2DISPLAY_VERSION_API}
@@ -83,7 +83,7 @@ services:
       - "traefik.http.middlewares.redirect-to-admin.redirectregex.regex=^https:\\/\\/([^\\/]+)\\/?$$"
       - "traefik.http.middlewares.redirect-to-admin.redirectregex.replacement=https://$$1${OS2DISPLAY_ADMIN_CLIENT_PATH}"
     volumes:
-      - ./media:/var/www/html/public/media:rw
+      - ./media:/app/public/media:rw
 
   redis:
     image: redis:8-alpine

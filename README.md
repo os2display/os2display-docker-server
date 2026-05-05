@@ -111,7 +111,7 @@ templates; edit your local copy, never the committed one.
 | File | Service | Purpose | Bootstrap |
 |---|---|---|---|
 | `.env` | (compose) | Compose orchestration: project name, profile, image versions, server domain. Read by `docker compose` for substitution into the YAML before parsing. | `cp .env.example .env` |
-| `.env.symfony` | os2display | Symfony app config — `APP_SECRET`, `DATABASE_URL`, `JWT_*`, `INTERNAL_OIDC_*`, `EXTERNAL_OIDC_*`, `ADMIN_*`, `CLIENT_*`, calendar feed, etc. | `task env:init` (extracts `/var/www/html/.env` from the API image — the upstream-canonical source) |
+| `.env.symfony` | os2display | Symfony app config — `APP_SECRET`, `DATABASE_URL`, `JWT_*`, `INTERNAL_OIDC_*`, `EXTERNAL_OIDC_*`, `ADMIN_*`, `CLIENT_*`, calendar feed, etc. | `task env:init` (extracts `/app/.env` from the API image — the upstream-canonical source) |
 | `.env.php` | os2display | PHP-FPM runtime tuning — `PHP_MEMORY_LIMIT`, `PHP_OPCACHE_*`, `PHP_PM_*`. | `cp .env.php.production.example .env.php` |
 | `.env.nginx` | nginx-api | Nginx runtime tuning — `NGINX_MAX_BODY_SIZE`, etc. | `cp .env.nginx.production.example .env.nginx` |
 | `.env.mariadb` | mariadb | MariaDB credentials. Must match the `DATABASE_URL` user + password + database in `.env.symfony`. | `cp .env.mariadb.production.example .env.mariadb` |
@@ -514,7 +514,7 @@ The repo is a thin wrapper around upstream tooling. The constraints we work unde
      substitution into `services.X.networks:` (which is the wrong layer).
    - **Compose's `COMPOSE_FILE`** for opt-in overrides. Not custom Taskfile branches that
      decide which files to load.
-   - **The image's annotated `/var/www/html/.env`** as the canonical Symfony env source. Not a
+   - **The image's annotated `/app/.env`** as the canonical Symfony env source. Not a
      parallel checked-in copy that drifts against upstream.
    - **Native YAML anchors** (`x-logging`) for repeated config blocks.
 
@@ -525,7 +525,7 @@ The repo is a thin wrapper around upstream tooling. The constraints we work unde
 
 4. **Production examples are canonical.** The `.production.example` files in this repo are the
    source of truth for runtime/deployment config. Symfony app config is the asymmetric
-   exception — the upstream API image's `/var/www/html/.env` is canonical there, and
+   exception — the upstream API image's `/app/.env` is canonical there, and
    `task env:init` extracts it. We don't duplicate upstream content.
 
 5. **Compose-managed by default; cross-stack sharing is opt-in.** Networks, volumes, and
