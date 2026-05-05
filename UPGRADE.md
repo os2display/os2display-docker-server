@@ -81,8 +81,17 @@ cp .env .env.docker.local .env.local /tmp/os2display-1x-backup/  # whatever subs
 cp -r jwt/ /tmp/os2display-1x-backup/
 ```
 
-If you have a snapshot tool (LVM, ZFS, btrfs, cloud volume snapshots), take a host-level
-snapshot here too. Belt-and-suspenders.
+You do **not** need to copy `./media/` aside for the rollback. It's a host bind-mount, not a
+docker named volume — `task purge`, `task down --volumes`, and `docker compose down --volumes`
+all leave it on disk. The `./media` directory survives the upgrade-then-rollback round-trip in
+place; the v1 database dump's filename references still match the files on disk after a
+restore.
+
+That said, the media bind-mount is also where uploaded user data lives. If you have a snapshot
+tool (LVM, ZFS, btrfs, cloud volume snapshots), take a host-level snapshot here for paranoia
+— protects against unrelated disk failures during the maintenance window, not against the
+upgrade itself. Same for `./jwt/`: bind-mounted, preserved across compose lifecycle, but a
+copy aside in `/tmp/os2display-1x-backup/` is cheap.
 
 #### 3. Stop the 1.x stack
 
@@ -229,8 +238,11 @@ further.
 If validation fails and the issue isn't an obvious env-config typo:
 
 ```bash
-task purge                              # WIPES all data — required because we're about to
-                                        # restore from backup
+task purge                              # WIPES the bundled mariadb data volume — required
+                                        # because we're about to restore from backup. ALSO
+                                        # wipes the redis cache (harmless; it rebuilds).
+                                        # Does NOT touch ./media or ./jwt — those are
+                                        # bind mounts, preserved through compose lifecycle.
 git checkout <previous 1.x ref>         # the tag or branch you came from
 docker compose up -d mariadb            # bring up the OLD mariadb alone
 docker compose logs -f mariadb          # wait for "ready for connections"
@@ -239,18 +251,36 @@ docker compose logs -f mariadb          # wait for "ready for connections"
 gunzip < /path/to/backup/<the dump>.sql.gz \
   | docker compose exec -T mariadb mariadb -u root -p"$(grep ^MARIADB_ROOT_PASSWORD= .env.docker.local | cut -d= -f2-)"
 
-# Restore the rest of your old config.
+# Restore the rest of your old config (jwt/ and media/ are still on disk —
+# nothing to copy back).
 cp /tmp/os2display-1x-backup/.env.docker.local .
 cp /tmp/os2display-1x-backup/.env.local .                     # if it existed
-cp -r /tmp/os2display-1x-backup/jwt/ .
 
 # Bring the rest of the 1.x stack up.
 task install                            # under the 1.x release that's now checked out
 ```
 
-Note: this rollback path requires `task purge`, which destroys data. The dump-restore step is
-what brings the data back. Don't try to roll back without restoring the dump — `app:update`'s
-3.x migrations may have applied schema changes that 1.x's `app:update` doesn't reverse.
+What survives the rollback in place:
+
+- **`./media/`** — host bind-mount, untouched by `task purge`. The restored v1 database's
+  filename references still point at the same files on disk. Any uploads or thumbnail-cache
+  rebuilds that happened during the brief v3 test window are orphaned but harmless on the
+  v1 side (v1's LiipImagineBundle regenerates its own cache as needed).
+- **`./jwt/`** — host bind-mount. Same JWT keys before and after.
+- **`traefik/letsencrypt/`** — bind-mount. Existing LE certs still valid.
+
+What gets destroyed and restored:
+
+- **MariaDB** — named volume, removed by `task purge --volumes`, restored by piping the dump
+  back in. **This is why `task db:backup` at step 2 is non-negotiable** — without it, the
+  rollback path can't reach v1's data.
+- **Redis cache** — named volume, removed and rebuilt empty. v1 application repopulates on
+  first request.
+
+Don't try to roll back without restoring the dump — `app:update`'s 3.x migrations may have
+applied schema changes that 1.x's `app:update` doesn't reverse, so a "tag revert + bring the
+3.x-mutated DB up under 1.x" path will fail silently (wrong queries, missing columns) or
+loudly (Doctrine refusing to start).
 
 ## Future migrations
 
