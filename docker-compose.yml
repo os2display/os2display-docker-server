@@ -190,7 +190,11 @@ services:
     # Probes /version so `docker compose up --wait` actually waits for the
     # proxy to be reachable before bringing dependent services up.
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:2375/version || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q --spider http://localhost:2375/version || exit 1",
+        ]
       interval: 30s
       timeout: 5s
       retries: 3

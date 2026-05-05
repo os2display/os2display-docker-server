@@ -35,7 +35,12 @@ v3 image's env contract. Skim the **Migration from 2.x** section at the bottom b
 
 ### Changed (breaking)
 
-- `socket-proxy` service hardened: image moved from unpinned `itkdev/docker-socket-proxy` (Docker Hub) to `ghcr.io/tecnativa/docker-socket-proxy:v0.4.2` (upstream, version-pinned). Dropped `user: root`, added `read_only: true` + `tmpfs: [/run]`, `security_opt: [no-new-privileges:true]`, and a healthcheck against `/version`.
+- `socket-proxy` service hardened: image moved from unpinned
+  `itkdev/docker-socket-proxy` (Docker Hub) to
+  `ghcr.io/tecnativa/docker-socket-proxy:v0.4.2` (upstream, version-pinned).
+  Dropped `user: root`, added `read_only: true` + `tmpfs: [/run]`,
+  `security_opt: [no-new-privileges:true]`, and a healthcheck against
+  `/version`.
 
 ### Fixed
 

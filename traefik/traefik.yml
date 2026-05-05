@@ -49,4 +49,3 @@ accessLog:
   fields:
     headers:
       defaultMode: drop
-
