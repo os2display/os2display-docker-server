@@ -6,7 +6,15 @@ x-logging: &default-logging
 
 networks:
   frontend:
-    external: true
+    # Compose-managed by default. The actual docker engine network name is
+    # configurable via OS2DISPLAY_FRONTEND_NETWORK in .env (defaults to
+    # "frontend"); services reference this network by the literal alias
+    # `frontend` regardless of its engine name.
+    #
+    # To share an existing frontend network across multiple compose projects
+    # (one traefik fronting several stacks), include compose.shared-frontend.yml
+    # via COMPOSE_FILE — it flips this to external: true.
+    name: ${OS2DISPLAY_FRONTEND_NETWORK:-frontend}
   app:
     driver: bridge
     internal: false
@@ -134,7 +142,7 @@ services:
       - ./traefik/traefik.yml:/traefik.yml:ro
       - ./traefik/dynamic-conf-${SERVER_CERT_PROVIDER:-letsencrypt}.yaml:/config/dynamic-conf.yaml:ro
     networks:
-      - ${SERVER_FRONTEND_NETWORK:-frontend}
+      - frontend
       - proxy
     labels:
       - "traefik.enable=true"

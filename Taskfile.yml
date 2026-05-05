@@ -46,14 +46,6 @@ tasks:
       - _env_files
     cmds:
       - echo "Installing"
-      - |
-        # Check if the external network 'frontend' exists, create if not
-        if ! docker network ls --format '{{`{{.Name}}`}}' | grep -wq frontend; then
-          echo "Creating external network 'frontend'"
-          docker network create frontend
-        else
-          echo "External network 'frontend' already exists"
-        fi
       - "{{.COMPOSE}} pull"
       - "{{.COMPOSE}} up --force-recreate --detach --remove-orphans"
       - echo "Waiting for database to be ready"
@@ -244,14 +236,6 @@ tasks:
       - stop
     cmds:
       - "{{.COMPOSE}} down --volumes --remove-orphans"
-      - |
-        # Check if the external network 'frontend' exists, remove if it does
-        if docker network ls --format '{{`{{.Name}}`}}' | grep -wq frontend; then
-          echo "Removing external network 'frontend'"
-          docker network rm frontend
-        else
-          echo "External network 'frontend' does not exist"
-        fi
 
   up:
     desc: Take the environment up without altering the existing state of the containers

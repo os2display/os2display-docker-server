@@ -121,6 +121,32 @@ the `os2display` image in 3.x and served as Symfony routes — there are no sepa
 
 `COMPOSE_PROFILES` is read natively by docker compose; no `-f` flags or wrapper scripts.
 
+### Sharing the frontend network across compose projects
+
+By default the `frontend` network is created and removed by docker compose alongside the stack.
+Operators running multiple compose projects behind a single Traefik can switch to a shared
+external network instead:
+
+1. Create the shared network once on the host:
+
+   ```bash
+   docker network create os2display_shared_frontend
+   ```
+
+2. In `.env` set the engine name and tell compose to layer the shared-frontend override:
+
+   ```bash
+   OS2DISPLAY_FRONTEND_NETWORK=os2display_shared_frontend
+   COMPOSE_FILE=docker-compose.yml:compose.shared-frontend.yml
+   ```
+
+3. `task install` (or `docker compose up -d`) now attaches services to the existing network
+   instead of creating one.
+
+`compose.shared-frontend.yml` is a one-line override that flips the `frontend` network to
+`external: true`. compose's auto-loaded `compose.override.yml` is still available for one-off
+per-host customisation.
+
 ## Available Tasks
 
 The project uses a `Taskfile.yml` to simplify common operations. Below is a list of the most

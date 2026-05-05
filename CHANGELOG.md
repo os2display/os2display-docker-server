@@ -106,6 +106,25 @@ v3 image's env contract. Skim the **Migration from 2.x** section at the bottom b
 - `load-templates-prod.sh`, `load-templates-develop.sh` — duplicated by `task load_templates`.
 - `restart.sh` — replaced by `task update`.
 
+### Changed (operator surface) — frontend network
+
+- The `frontend` network is now compose-managed by default (was `external: true`). Compose
+  creates and removes it as part of `docker compose up` / `down`. The manual
+  `docker network create frontend` boilerplate in `task install` and the matching `network rm`
+  in `task purge` are gone.
+- The actual docker engine network name is now configurable via `OS2DISPLAY_FRONTEND_NETWORK`
+  in `.env` (defaults to `frontend`). Services reference the network by the literal alias
+  `frontend` regardless of its engine name. Previously, the `${SERVER_FRONTEND_NETWORK:-frontend}`
+  substitution on `traefik.networks` was the wrong hook — services' `networks:` list takes a
+  compose-internal alias, not an engine name; the substitution produced silent breakage if any
+  operator actually set it.
+- `compose.shared-frontend.yml` shipped as the canonical opt-in for cross-stack frontend
+  sharing. Operators include it via `COMPOSE_FILE=docker-compose.yml:compose.shared-frontend.yml`
+  in `.env`; that flips the network back to `external: true` so multiple compose projects can
+  attach to one shared engine network.
+- Removed `SERVER_FRONTEND_NETWORK` from `.env.traefik.production.example`. The corresponding
+  substitution on `traefik.networks` is gone.
+
 ### Documentation
 
 - README documents the UID 1042 (deploy, api) / UID 101 (nginx-unprivileged) permission contract
