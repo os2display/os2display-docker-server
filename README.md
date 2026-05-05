@@ -73,6 +73,19 @@ This setup separates orchestration config (read by docker compose) from applicat
 
 Edit each file before running `task install`.
 
+### Stack composition
+
+`COMPOSE_PROFILES` in `.env` controls which built-in infrastructure services start. Core services (`os2display`, `nginx-api`, `redis`, `admin`, `client`) always run.
+
+| `COMPOSE_PROFILES` value | Built-in services started | Use when |
+|---|---|---|
+| `mariadb,traefik` | MariaDB + Traefik (default) | Single-host install with no external infra |
+| `traefik` | Traefik only | External database (set `APP_DATABASE_URL` in `.env.local` to point at it) |
+| `mariadb` | MariaDB only | External proxy in front |
+| (empty) | Neither | Both DB and proxy provided externally |
+
+`COMPOSE_PROFILES` is read natively by docker compose; no `-f` flags or wrapper scripts.
+
 ## Available Tasks
 
 The project uses a `Taskfile.yml` to simplify common operations. Below is a list of the most important tasks you can run:
