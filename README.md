@@ -28,9 +28,15 @@ task --version
 ```
 
 ## Create the deploy-user
-Files inside the `os2display-api-service` container are owned by a user with UID 1042 and GID 1042. To prevent permission issues with bind mounts (the `media` and `jwt` volumes), it’s best to install the application using a user with the same UID and GID.
 
-To set this up on your server, create a new user (for example, `deploy`). You can choose a different username if you prefer, but make sure to assign UID and GID 1042.
+The bind mounts have two readers/writers with different UIDs:
+
+- The `os2display` (api) container writes media and reads JWT keys as **UID 1042** (`deploy`).
+- The `nginx-api` container reads media to serve them as **UID 101** (`nginx-unprivileged`).
+
+To prevent permission issues, install the application as a host user with UID 1042 and GID 1042 — that user will own everything written into `./media` and `./jwt`. The host directory must also be readable by UID 101 (nginx); the simplest setup is to make `./media` group-readable with group 1042, since UID 101 inside the nginx container can read group-readable files via the supplementary-group bridge that `chmod g+r` provides on a typical Linux host. If you see broken thumbnails or 404s on uploaded images, double-check the `./media` permissions before anything else.
+
+Create a host user with UID 1042 and GID 1042 (any name works — `deploy` by convention):
 
 Here’s how to create the user:
 
