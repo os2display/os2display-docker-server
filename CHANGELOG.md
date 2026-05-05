@@ -65,6 +65,17 @@ v3 image's env contract. Skim the **Migration from 2.x** section at the bottom b
 
 ### Fixed
 
+- **Cert resolver hardcoded to Let's Encrypt for cert-file operators.** The traefik dashboard
+  router carried `tls.certresolver=letsencrypt` regardless of `SERVER_CERT_PROVIDER`, and the
+  static `traefik.yml` set `letsencrypt` as the default `certResolver` on the websecure
+  entrypoint — so cert-file operators had Traefik attempting Let's Encrypt issuance against the
+  dashboard host even though their cert came from a local file. Split `traefik.yml` into
+  `traefik-letsencrypt.yml` (entrypoint default `certResolver: letsencrypt`, ACME resolver
+  declared) and `traefik-cert-file.yml` (no entrypoint default, certs come from the file
+  provider's `tls.certificates:` via SNI). Volume mount selects the right one via
+  `SERVER_CERT_PROVIDER`, mirroring the existing `dynamic-conf-*.yaml` pattern. The redundant
+  `tls.certresolver=letsencrypt` label on the dashboard router is replaced with `tls=true`;
+  the entrypoint default handles resolver selection.
 - **Routing bug for `/admin` and `/client` paths.** While the v2 admin/client services were still
   in compose alongside the v3 API image, their Traefik labels
   (`Host(domain) && PathPrefix(/admin|/client)`) won the longest-match rule and routed those paths
