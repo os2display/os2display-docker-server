@@ -1,3 +1,11 @@
+# Operator-edited environment files (one per service + orchestration).
+.env
+.env.symfony
+.env.php
+.env.nginx
+.env.mariadb
+.env.traefik
+
+# Legacy from 2.x — kept ignored so an in-place upgrade doesn't surface them.
 .env.local
 .env.docker.local
-.env.traefik

@@ -41,6 +41,27 @@ v3 image's env contract. Skim the **Migration from 2.x** section at the bottom b
   Dropped `user: root`, added `read_only: true` + `tmpfs: [/run]`,
   `security_opt: [no-new-privileges:true]`, and a healthcheck against
   `/version`.
+- **Operator env config split into one file per service.** Previously runtime
+  tunables (`PHP_*`, `NGINX_*`, `MARIADB_*`) lived in `.env` and were
+  substituted into compose `environment:` blocks; Symfony app config lived in
+  `.env.local`. That gave a split surface and let compose silently override
+  env_file values — opposite of what env_file was for. New layout:
+
+  | File           | Service env                   | Canonical example                                              |
+  | -------------- | ----------------------------- | -------------------------------------------------------------- |
+  | `.env.symfony` | os2display Symfony app config | image-extracted via `task env:init`                            |
+  | `.env.php`     | os2display PHP-FPM runtime    | `.env.php.production.example`                                  |
+  | `.env.nginx`   | nginx-api runtime             | `.env.nginx.production.example`                                |
+  | `.env.mariadb` | mariadb credentials           | `.env.mariadb.production.example`                              |
+  | `.env.traefik` | traefik config                | `.env.traefik.production.example` (renamed from `.env.traefik.example`) |
+  | `.env`         | compose orchestration         | `.env.example` (shrunk)                                        |
+
+  Each compose service reads its own `env_file:` list. No cross-service env
+  leakage. The compose-level `environment:` blocks on `os2display`, `nginx-api`,
+  and `mariadb` are gone. `task env:init` produces `.env.symfony` (was
+  `.env.local`); `task env:diff` and `task env:migrate` updated to match.
+  `task install`'s `_env_files` dep auto-creates any missing per-service env
+  file from its `.production.example` template.
 
 ### Fixed
 

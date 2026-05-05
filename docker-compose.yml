@@ -21,16 +21,16 @@ services:
     logging: *default-logging
     networks:
       - app
+    # Symfony app config (APP_SECRET, DATABASE_URL, JWT, OIDC, ADMIN_*,
+    # CLIENT_*, ...) lives in .env.symfony — bootstrapped from the API image's
+    # /var/www/html/.env via `task env:init`.
+    # PHP-FPM runtime tuning lives in .env.php — copy from
+    # .env.php.production.example.
     env_file:
-      - .env.local
-    environment:
-      - PHP_TIMEZONE=UTC
-      - PHP_MAX_EXECUTION_TIME=${PHP_MAX_EXECUTION_TIME:-30}
-      - PHP_MEMORY_LIMIT=${PHP_MEMORY_LIMIT:-128M}
-      - PHP_POST_MAX_SIZE=${PHP_POST_MAX_SIZE:-140M}
-      - PHP_UPLOAD_MAX_FILESIZE=${PHP_UPLOAD_MAX_FILESIZE:-128M}
-      - PHP_PM_MAX_CHILDREN=${PHP_PM_MAX_CHILDREN:-16}
-      - PHP_OPCACHE_VALIDATE_TIMESTAMPS=0
+      - path: .env.symfony
+        required: true
+      - path: .env.php
+        required: true
     healthcheck:
       test: ["CMD", "php", "-r", "exit(@fsockopen('127.0.0.1', 9000) ? 0 : 1);"]
       interval: 30s
@@ -48,8 +48,11 @@ services:
     networks:
       - app
       - frontend
-    environment:
-      - NGINX_MAX_BODY_SIZE=${NGINX_MAX_BODY_SIZE:-140m}
+    # NGINX_* runtime tunables in .env.nginx — copy from
+    # .env.nginx.production.example. Image defaults suffice for most installs.
+    env_file:
+      - path: .env.nginx
+        required: true
     depends_on:
       os2display:
         condition: service_healthy
@@ -97,11 +100,11 @@ services:
     logging: *default-logging
     networks:
       - app
-    environment:
-      - MARIADB_DATABASE=${MARIADB_DATABASE}
-      - MARIADB_USER=${MARIADB_USER}
-      - MARIADB_PASSWORD=${MARIADB_PASSWORD}
-      - MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD}
+    # MariaDB credentials (must match DATABASE_URL in .env.symfony) live in
+    # .env.mariadb — copy from .env.mariadb.production.example.
+    env_file:
+      - path: .env.mariadb
+        required: true
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 30s
