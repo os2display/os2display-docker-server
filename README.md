@@ -171,6 +171,98 @@ For a full list of tasks, run:
 task --list
 ```
 
+## Image registries and authentication
+
+This stack pulls from two registries. Today every image is **public** and no
+authentication is required to install. The recipes below cover the cases an
+operator runs into in practice: Docker Hub anonymous rate limits, and the
+possibility that an upstream image flips to private later.
+
+### Registry inventory
+
+| Image | Registry | Profile | Auth required |
+|---|---|---|---|
+| `ghcr.io/os2display/display-api-service` | GHCR | always | none (public) |
+| `ghcr.io/os2display/display-api-service-nginx` | GHCR | always | none (public) |
+| `ghcr.io/tecnativa/docker-socket-proxy` | GHCR | `traefik` | none (public) |
+| `redis:8-alpine` | Docker Hub | always | none, but rate-limited |
+| `mariadb:11.4.x` | Docker Hub | `mariadb` | none, but rate-limited |
+| `traefik:v3.6` | Docker Hub | `traefik` | none, but rate-limited |
+| `peterdavehello/markdownlint` | Docker Hub | `dev` | none, but rate-limited |
+| `jauderho/prettier` | Docker Hub | `dev` | none, but rate-limited |
+
+The upstream `redis`, `mariadb`, and `traefik` projects publish only to Docker
+Hub — there is no canonical GHCR mirror.
+
+### Docker Hub: rate limits
+
+Anonymous pulls from Docker Hub are capped at **100 per 6h per IP**. A multi-
+host operator behind a shared NAT or NATted egress can run into this on
+`task install` after a sequence of `docker compose pull` runs across hosts.
+
+Authenticate to your free Docker Hub account to lift the cap to **200 per 6h
+per user**:
+
+```bash
+docker login docker.io
+# Username: <your Docker Hub username>
+# Password: <a Docker Hub Personal Access Token, https://app.docker.com/settings/personal-access-tokens>
+```
+
+For unattended hosts, configure a credential helper instead of leaving the
+token in `~/.docker/config.json` plaintext. On Linux servers,
+`docker-credential-pass` (backed by `pass`) is the usual pick; see
+[Docker's credential-store docs](https://docs.docker.com/engine/reference/commandline/login/#credential-stores).
+
+If your operator scale is high enough that the 200/6h ceiling is also tight,
+set up a [pull-through registry mirror](https://docs.docker.com/registry/recipes/mirror/)
+(or use a managed one like AWS ECR pull-through cache or
+[depot.dev](https://depot.dev/)) and point the host's Docker daemon at it.
+
+### GHCR: pulling the os2display images
+
+All `ghcr.io/os2display/*` images this stack uses are **public** today, so
+`docker pull` works without `docker login`. No action required for a fresh
+install.
+
+If a future image becomes private (or you mirror Docker Hub images into your
+own private GHCR namespace), authenticate with a GitHub Personal Access Token
+that has the `read:packages` scope:
+
+```bash
+# Create a classic PAT with read:packages scope at:
+#   https://github.com/settings/tokens/new?scopes=read:packages
+echo "$GHCR_PAT" | docker login ghcr.io -u "$GITHUB_USERNAME" --password-stdin
+```
+
+Or, if `gh` is installed and you've already run `gh auth login`:
+
+```bash
+gh auth token | docker login ghcr.io -u "$(gh api user -q .login)" --password-stdin
+```
+
+The login persists in `~/.docker/config.json`; subsequent `docker compose pull`
+calls on the same host pick it up automatically.
+
+### GitHub Actions: pulling private GHCR images from CI
+
+The `compose.yaml` workflow's `image-availability` job runs
+`docker buildx imagetools inspect` against every pinned image. Public images
+work without any setup. If we ever switch one of the os2display images to
+private, add a `docker/login-action` step before the inspect job:
+
+```yaml
+- name: Log in to GHCR
+  uses: docker/login-action@v3
+  with:
+    registry: ghcr.io
+    username: ${{ github.actor }}
+    password: ${{ secrets.GITHUB_TOKEN }}
+```
+
+`GITHUB_TOKEN` automatically has `read:packages` for packages in the same org,
+so no PAT management is needed.
+
 ## Linting
 
 Markdown and YAML are linted in CI. To run the same checks locally:
