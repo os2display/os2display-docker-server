@@ -2,9 +2,14 @@
 
 ## [Unreleased] — release/3.0.0
 
-This is the operator-facing 2.x → 3.x cut. The `display-api-service` image bundles the admin and
-screen-client UIs in 3.x; this repo's compose stack is consolidated, hardened, and aligned to the
-v3 image's env contract. Skim the **Migration from 2.x** section at the bottom before upgrading.
+This repo's previous major was 1.x. **2.x is skipped** — internal canonical work on a
+`release/2.0.0` branch never shipped as a tagged release, and we're aligning this repo's
+major version with upstream
+[`display-api-service`](https://github.com/os2display/display-api-service) (which is at 3.x)
+so operators see one major-version number per stack. The `display-api-service` image bundles
+the admin and screen-client UIs in 3.x; this repo's compose stack is consolidated, hardened,
+and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
+[UPGRADE.md](UPGRADE.md)** for the step-by-step migration recipe.
 
 ### Added
 
@@ -162,28 +167,9 @@ v3 image's env contract. Skim the **Migration from 2.x** section at the bottom b
   GHCR, 5 on Docker Hub), Docker Hub anon rate-limit guidance, GHCR auth recipe (PAT and `gh`
   variants), and a `docker/login-action` snippet for CI if one of the GHCR images flips private.
 
-### Migration from 2.x
+### Migration from older releases
 
-1. `git fetch && git checkout release/3.0.0`
-2. `task stop` to bring the 2.x stack down.
-3. **Backup**: `task db:backup` (writes `./backup/<timestamp>.sql.gz`). And keep your old
-   `.env.docker.local` somewhere safe.
-4. **Orchestration env**: `cp .env.example .env`. Copy over your old domain, image versions,
-   MariaDB credentials. The `INTERNAL_DATABASE` / `INTERNAL_PROXY` toggles are gone — use
-   `COMPOSE_PROFILES=mariadb,traefik` (or drop a token if running external infra).
-5. **Application env**: `task env:migrate` to translate your old `.env.docker.local` into a
-   v3-shaped `.env.local.migrated`. Review the diff (`diff -u .env.docker.local
-   .env.local.migrated`), then `mv .env.local.migrated .env.local`. Or, for a clean start:
-   `task env:init` to pull the annotated example from the image, then edit by hand.
-6. **Set `serverVersion`** in `DATABASE_URL` (in `.env.local`) to `11.4.10-MariaDB` for the bumped
-   MariaDB.
-7. **Set `ADMIN_*` and `CLIENT_*`** keys in `.env.local` to match your previous admin/client
-   container config (login methods, color scheme, etc.). The image defaults suffice for a
-   working install.
-8. `task install` re-creates the stack against the new file layout. The mariadb container's
-   entrypoint will run `mariadb-upgrade` automatically on the existing 10.x data; running
-   `task db:upgrade` afterwards is a cheap belt-and-suspenders sanity step.
-9. `task cc` to flush Doctrine's cached metadata.
+See [UPGRADE.md](UPGRADE.md) for the step-by-step 1.x → 3.x recipe.
 
 ## v1.0.0 - Initial Release
 
