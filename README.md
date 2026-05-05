@@ -67,11 +67,13 @@ This setup separates orchestration config (read by docker compose) from applicat
 
 | File | Purpose | Bootstrap |
 |---|---|---|
-| `.env` | Orchestration: project name, domain, image versions, profile toggles, MariaDB credentials, PHP runtime tuning, admin/screen client settings. Read by `docker compose` for variable substitution. | `cp .env.example .env` |
-| `.env.local` | Application config for the API service: `APP_SECRET`, `APP_DATABASE_URL`, JWT, OIDC, Redis, calendar feed, etc. Mounted into the `os2display` container via `env_file:`. | `cp .env.local.example .env.local` |
+| `.env` | Orchestration: project name, domain, image versions, profile toggles, MariaDB credentials, PHP runtime tuning. Read by `docker compose` for variable substitution. | `cp .env.example .env` |
+| `.env.local` | Application config for the API service: `APP_SECRET`, `DATABASE_URL`, JWT, OIDC, Redis, calendar feed, admin/client settings, etc. Mounted into the `os2display` container via `env_file:`. | `task env:init` (extracts the annotated example shipped in the API image) |
 | `.env.traefik` | Traefik dashboard auth, Let's Encrypt email, cert provider. | `task traefik_env` (interactive) or `cp .env.traefik.example .env.traefik` |
 
 Edit each file before running `task install`.
+
+`task env:diff` compares your `.env.local` against the example shipped in the currently-pinned API image. `task env:migrate` rewrites a 2.x `.env.docker.local` (or an APP_-prefixed `.env.local`) into the v3 bare-name format — output goes to `.env.local.migrated` for review before applying.
 
 ### Stack composition
 
@@ -102,7 +104,7 @@ The project uses a `Taskfile.yml` to simplify common operations. Below is a list
 - **`task user_add`**: Adds a new user (editor or admin) to a tenant.
 
 ### Templates and Screen Layouts
-- **`task load_templates`**: Loads templates and screen layouts based on `TASK_VERSION_TEMPLATES`, `TASK_TEMPLATES`, and `TASK_SCREEN_LAYOUTS` in `.env`.
+- **`task load_templates`**: Installs the templates and screen layouts bundled in the API image (`app:templates:install --all --update` and `app:screen-layouts:install --all --update --cleanupRegions`). 3.x ships templates inside the image — there is no longer a list of names or a version pin in `.env`.
 
 ### Maintenance
 - **`task logs`**: Follows the logs from the Docker containers.
@@ -110,8 +112,8 @@ The project uses a `Taskfile.yml` to simplify common operations. Below is a list
 
 ### Pre-installation Notes
 Before running `task install`, ensure the following:
-1. `cp .env.example .env` and set your `OS2DISPLAY_SERVER_DOMAIN`, image versions, and MariaDB credentials.
-2. `cp .env.local.example .env.local` and set `APP_SECRET`, `APP_JWT_PASSPHRASE`, `APP_DATABASE_URL`, and any OIDC values you need.
+1. `cp .env.example .env` and set your `OS2DISPLAY_SERVER_DOMAIN`, `OS2DISPLAY_VERSION_API`, and MariaDB credentials.
+2. `task env:init` to extract the annotated `.env.local` from the API image. Then edit it: set `APP_SECRET`, `JWT_PASSPHRASE`, `DATABASE_URL`, and any OIDC values you need. (Operators upgrading from 2.x: run `task env:migrate` first to rename `APP_*` keys.)
 3. Run `task traefik_env` to configure the Traefik dashboard credentials and Let's Encrypt email (or copy `.env.traefik.example` to `.env.traefik` and edit by hand).
 4. If using a custom SSL certificate (`SERVER_CERT_PROVIDER=cert-file`), place `docker.crt` and `docker.key` in `traefik/ssl/`.
 

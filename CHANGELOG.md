@@ -4,6 +4,23 @@
 
 ### Changed (breaking)
 
+- API + nginx images switched from `itkdev/os2display-api-service{,-nginx}` (Docker Hub) to `ghcr.io/os2display/display-api-service{,-nginx}` (GHCR), pinned at `3.0.0-rc1`.
+- `.env.local` keys are bare Symfony names (no `APP_` prefix) — every `APP_X` from a 2.x deployment becomes `X`, **except** `APP_ENV` and `APP_SECRET` which are Symfony-defined and keep the prefix. Full rename list in upstream `display-api-service` `UPGRADE.md` § 2.1.
+- `task install` runs `bin/console app:update` (was `doctrine:schema:create`).
+- `task update` runs `bin/console app:update` (was `doctrine:migrations:migrate --no-interaction`).
+- `task load_templates` collapsed to `app:templates:install --all --update` and `app:screen-layouts:install --all --update --cleanupRegions`. v3 bundles templates in the image — no more URL fetching, no `TASK_VERSION_TEMPLATES` / `TASK_TEMPLATES` / `TASK_SCREEN_LAYOUTS` in `.env`.
+
+### Added
+
+- `task env:init` — extracts the annotated `.env` shipped at `/var/www/html/.env` in the API image and writes it to `.env.local`.
+- `task env:diff` — diffs your `.env.local` against the example in the currently-pinned image.
+- `task env:migrate` — rewrites a 2.x `.env.docker.local` (or APP_-prefixed `.env.local`) to v3 bare-name format, output to `.env.local.migrated` for review.
+
+### Removed
+
+- `.env.local.example` — operators bootstrap from the image via `task env:init`. The image's `/var/www/html/.env` is the single source of truth.
+- `TASK_VERSION_TEMPLATES`, `TASK_TEMPLATES`, `TASK_SCREEN_LAYOUTS` from `.env.example` — obsolete with v3's bundled templates.
+
 - Compose stack consolidated into a single `docker-compose.yml`. The split into `docker-compose.server.yml` + `docker-compose.mariadb.yml` + `docker-compose.traefik.yml` is gone, along with the Taskfile `_dc_compile` synthesis step that merged them.
 - Built-in MariaDB and Traefik are now activated via `COMPOSE_PROFILES` (read natively by docker compose) instead of `INTERNAL_DATABASE` / `INTERNAL_PROXY` flags. Default `COMPOSE_PROFILES=mariadb,traefik` reproduces the prior behavior. To use external DB or proxy, drop the matching token.
 - Screen-client URLs (`APP_API_ENDPOINT`, etc.) are now derived from `OS2DISPLAY_SERVER_DOMAIN` directly in `docker-compose.yml`. Operators no longer hand-edit five `https://demo.os2display.dk` lines in `.env`.
