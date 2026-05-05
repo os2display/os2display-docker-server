@@ -155,7 +155,7 @@ services:
       - "traefik.http.routers.dashboard.middlewares=dashboard-auth,security-headers@file"
 
   socket-proxy:
-    image: ghcr.io/tecnativa/docker-socket-proxy:0.3.0
+    image: ghcr.io/tecnativa/docker-socket-proxy:v0.4.2
     profiles: [traefik]
     container_name: socket-proxy
     restart: unless-stopped

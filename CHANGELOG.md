@@ -4,7 +4,7 @@
 
 ### Changed (breaking)
 
-- `socket-proxy` service hardened: image moved from unpinned `itkdev/docker-socket-proxy` (Docker Hub) to `ghcr.io/tecnativa/docker-socket-proxy:0.3.0` (upstream, version-pinned). Dropped `user: root`, added `read_only: true` + `tmpfs: [/run]`, `security_opt: [no-new-privileges:true]`, and a healthcheck against `/version`.
+- `socket-proxy` service hardened: image moved from unpinned `itkdev/docker-socket-proxy` (Docker Hub) to `ghcr.io/tecnativa/docker-socket-proxy:v0.4.2` (upstream, version-pinned). Dropped `user: root`, added `read_only: true` + `tmpfs: [/run]`, `security_opt: [no-new-privileges:true]`, and a healthcheck against `/version`.
 
 - API + nginx images switched from `itkdev/os2display-api-service{,-nginx}` (Docker Hub) to `ghcr.io/os2display/display-api-service{,-nginx}` (GHCR), pinned at `3.0.0-rc1`.
 - `.env.local` keys are bare Symfony names (no `APP_` prefix) — every `APP_X` from a 2.x deployment becomes `X`, **except** `APP_ENV` and `APP_SECRET` which are Symfony-defined and keep the prefix. Full rename list in upstream `display-api-service` `UPGRADE.md` § 2.1.
