@@ -20,7 +20,7 @@ no build step, no shell-script glue beyond the Taskfile.
   - [Network topology](#network-topology)
   - [Cookbook](#cookbook)
   - [Caveats and foot-guns](#caveats-and-foot-guns)
-  - [Migrating from 2.x](#migrating-from-2x)
+  - [Migrating from an older release](#migrating-from-an-older-release)
 - [Developer guide](#developer-guide)
   - [Design principles](#design-principles)
   - [Local development](#local-development)
@@ -184,45 +184,9 @@ back from a botched upgrade is "restore from `task db:backup` first, then revert
 
 #### How do I upgrade the bundled MariaDB across a major version?
 
-A MariaDB major-version bump (e.g. 10.x → 11.x) is binary-compatible at the data-file level —
-MariaDB 11 reads 10.x InnoDB tablespaces — but it is **not** a one-shot container restart.
-
-Three things must happen for a clean cut:
-
-1. **Take a backup.** `task db:backup` writes `./backup/<UTC-timestamp>.sql.gz` using
-   `mariadb-dump --single-transaction`, no service downtime.
-2. **Pull the new image, restart the DB, run the upgrade.** The mariadb image's entrypoint
-   auto-runs `mariadb-upgrade` when it detects a version bump on existing data; running
-   `task db:upgrade` afterwards is a cheap belt-and-suspenders sanity step.
-3. **Update `DATABASE_URL` `serverVersion=` in `.env.symfony`.** Doctrine uses this to pick its
-   SQL dialect — a mismatch produces subtly wrong queries (most often: incorrect JSON or
-   function syntax). For 11.4: `serverVersion=11.4.10-MariaDB`.
-
-Recipe:
-
-```bash
-task db:backup                     # ./backup/<ts>.sql.gz
-task stop                          # bring down dependents (api, nginx)
-
-$EDITOR docker-compose.yml         # bump mariadb image tag (or pull this branch's pin)
-docker compose pull mariadb
-docker compose up -d mariadb
-docker compose logs -f mariadb     # wait for "ready for connections"
-
-task db:upgrade                    # idempotent; safe to re-run
-
-$EDITOR .env.symfony               # set DATABASE_URL serverVersion to the new MariaDB version
-task up
-task cc                            # flush Doctrine's metadata cache
-```
-
-If `task db:upgrade` reports incompatible objects, restore from the dump and roll back the image
-tag before debugging:
-
-```bash
-gunzip < backup/<ts>.sql.gz \
-  | docker compose exec -T mariadb mariadb -u root -p"$(grep ^MARIADB_ROOT_PASSWORD= .env.mariadb | cut -d= -f2-)"
-```
+See [UPGRADE.md](UPGRADE.md). The 1.x → 3.x section has the recipe (it covers the 10.x → 11.4
+jump that came with the 3.0 release); the same `task db:backup` → `task db:upgrade` →
+update `DATABASE_URL` `serverVersion=` flow applies to any future major bump.
 
 #### How do I switch from Let's Encrypt to a custom certificate?
 
@@ -521,53 +485,10 @@ production examples are checked-in templates; your operator edits go into `.env.
 (gitignored). Editing the templates means future `task install` invocations bootstrap your
 custom values into other operator's checkouts and `git status` is permanently dirty.
 
-### Migrating from 2.x
+### Migrating from an older release
 
-The bigger jumps in 3.x:
-
-1. **API + admin + client are one image now.** v2's separate `os2display-admin-client` and
-   `os2display-client` images don't exist in 3.x; the v3 API serves `/admin` and `/client` via
-   Symfony routes. The admin/client services are gone from `docker-compose.yml`.
-2. **Env vars lose the `APP_` prefix** (except `APP_ENV` and `APP_SECRET` which Symfony defines).
-   `APP_DATABASE_URL` becomes `DATABASE_URL`, `APP_JWT_PASSPHRASE` becomes `JWT_PASSPHRASE`,
-   etc. See upstream `display-api-service` `UPGRADE.md` § 2.1 for the full 56-key rename list.
-3. **Operator env config split into one file per service.** No more single `.env.docker.local`.
-4. **`MARIADB_*` and `NGINX_*` and `PHP_*` move out of `.env`** into per-service env files.
-5. **MariaDB 11.4** (was 10.x). Doctrine's `serverVersion` parameter must be updated.
-
-Recipe:
-
-```bash
-git fetch && git checkout release/3.0.0
-task stop                                  # bring the 2.x stack down
-
-task db:backup                             # ./backup/<ts>.sql.gz
-cp .env.docker.local /tmp/                 # belt-and-suspenders backup
-
-cp .env.example .env
-$EDITOR .env                               # copy over OS2DISPLAY_SERVER_DOMAIN, image
-                                           # versions, COMPOSE_PROFILES (was INTERNAL_*)
-
-task env:migrate                           # writes .env.symfony.migrated from your old
-                                           # .env.docker.local, stripping APP_ prefix
-diff -u .env.docker.local .env.symfony.migrated
-mv .env.symfony.migrated .env.symfony
-$EDITOR .env.symfony                       # set DATABASE_URL serverVersion=11.4.10-MariaDB
-
-# Per-service files: copy from production examples and edit.
-cp .env.php.production.example     .env.php
-cp .env.nginx.production.example   .env.nginx
-cp .env.mariadb.production.example .env.mariadb
-$EDITOR .env.mariadb                       # match credentials from your old .env.docker.local
-                                           # — must equal the user/password in DATABASE_URL above
-
-task install                               # mariadb entrypoint runs mariadb-upgrade against
-                                           # existing data; app:update runs Doctrine migrations
-task cc                                    # flush metadata cache after the migration
-```
-
-Validate by logging in via `/admin`, opening an existing slide, and confirming media renders.
-If thumbnails 404, check `./media` permissions (UID 1042 owner, group-readable).
+See [UPGRADE.md](UPGRADE.md) for the step-by-step 1.x → 3.x migration recipe (this repo skips
+2.x to align its major version with upstream `display-api-service`).
 
 ---
 
