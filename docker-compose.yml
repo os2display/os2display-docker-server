@@ -154,16 +154,35 @@ services:
       - "traefik.http.routers.dashboard.service=api@internal"
       - "traefik.http.routers.dashboard.middlewares=dashboard-auth,security-headers@file"
 
+  # socket-proxy: brokers Traefik's docker socket access. The highest-trust
+  # container in the stack — it fronts the docker daemon over tcp://2375,
+  # so it gets the most aggressive hardening profile. Rationale documented
+  # inline at each decision below.
   socket-proxy:
+    # Upstream Tecnativa image on GHCR, version-pinned. Replaces the previous
+    # itkdev/docker-socket-proxy on Docker Hub (no tag = floating :latest).
+    # Multi-arch manifest verified live on GHCR.
     image: ghcr.io/tecnativa/docker-socket-proxy:v0.4.2
     profiles: [traefik]
     container_name: socket-proxy
     restart: unless-stopped
+    # Hardening: no `user: root` override here — the upstream image runs as
+    # a non-root user by default. Keeps the privilege footprint minimal even
+    # before security_opt below.
+    #
+    # Hardening: read_only: true + tmpfs: [/run] removes the container's
+    # writable layer except for /run (in-memory, scoped to the container
+    # lifecycle). Mitigates a class of attacks where a compromised proxy
+    # mutates its own filesystem to widen the API surface it allows through.
     read_only: true
     tmpfs:
       - /run
+    # Hardening: blocks setuid/setgid escalation regardless of how the image
+    # is built. Defense in depth alongside the read-only filesystem.
     security_opt:
       - no-new-privileges:true
+    # Probes /version so `docker compose up --wait` actually waits for the
+    # proxy to be reachable before bringing dependent services up.
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:2375/version || exit 1"]
       interval: 30s
