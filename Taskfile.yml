@@ -173,7 +173,7 @@ tasks:
         VERSION=$(grep ^OS2DISPLAY_VERSION_API= .env | cut -d= -f2)
         IMAGE="ghcr.io/os2display/display-api-service:${VERSION}"
         docker pull "$IMAGE"
-        docker run --rm --entrypoint sh "$IMAGE" -c 'cat /var/www/html/.env' > .env.symfony
+        docker run --rm --entrypoint sh "$IMAGE" -c 'cat /app/.env' > .env.symfony
         echo ".env.symfony created from $IMAGE."
         echo "Edit it to set APP_SECRET, JWT_PASSPHRASE, DATABASE_URL, plus any ADMIN_* / CLIENT_* / OIDC_* overrides."
         echo "Then run 'task install'."
@@ -190,7 +190,7 @@ tasks:
         VERSION=$(grep ^OS2DISPLAY_VERSION_API= .env | cut -d= -f2)
         IMAGE="ghcr.io/os2display/display-api-service:${VERSION}"
         tmp=$(mktemp)
-        docker run --rm --entrypoint sh "$IMAGE" -c 'cat /var/www/html/.env' > "$tmp"
+        docker run --rm --entrypoint sh "$IMAGE" -c 'cat /app/.env' > "$tmp"
         diff -u .env.symfony "$tmp" || true
         rm -f "$tmp"
 

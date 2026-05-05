@@ -13,7 +13,7 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
 
 ### Added
 
-- `task env:init` — extracts the annotated `.env` shipped at `/var/www/html/.env` in the API
+- `task env:init` — extracts the annotated `.env` shipped at `/app/.env` in the API
   image and writes it to `.env.local`. Replaces the previous checked-in `.env.local.example`; the
   image is now the single source of truth for the operator-facing env surface.
 - `task env:diff` — diffs your `.env.local` against the example in the currently-pinned image.
@@ -114,9 +114,9 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
   `ADMIN_*` / `CLIENT_*` keys in `.env.local`. `OS2DISPLAY_ADMIN_CLIENT_PATH` is retained —
   `nginx-api`'s `/` → `/admin` redirect middleware still uses it.
 - `.env.docker.example` — split into `.env.example` (orchestration) and the image-shipped
-  `/var/www/html/.env` (extracted by `task env:init`).
+  `/app/.env` (extracted by `task env:init`).
 - `.env.local.example` — operators bootstrap from the image via `task env:init`. The image's
-  `/var/www/html/.env` is the single source of truth.
+  `/app/.env` is the single source of truth.
 - `TASK_VERSION_TEMPLATES`, `TASK_TEMPLATES`, `TASK_SCREEN_LAYOUTS` from `.env.example` —
   obsolete with v3's bundled templates.
 - `load-templates-prod.sh`, `load-templates-develop.sh` — duplicated by `task load_templates`.
@@ -182,6 +182,19 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
   `dev:lint:fix`. Wraps the existing `markdownlint` and `prettier` `dev`-profile services.
   CI workflows still call docker compose directly (no Task dependency on runners); the Task
   wrappers are local-dev convenience.
+
+### Changed — image WORKDIR restored to `/app`
+
+- Image-tag pin bumped from `3.0.0-rc1` to `3.0.0-rc2`. Upstream
+  [`display-api-service` PR #430](https://github.com/os2display/display-api-service/pull/430)
+  restored the image's `WORKDIR` from `/var/www/html` (silent drift in rc1) to `/app`, matching
+  the 2.x layout and existing operator deployments. We flip our paths to follow.
+- `docker-compose.yml`: bind mounts `./jwt:/app/config/jwt:rw` and `./media:/app/public/media:rw`
+  on the `os2display` and `nginx-api` services (was `/var/www/html/...`).
+- `task env:init` and `task env:diff`: read `/app/.env` from the image (was `/var/www/html/.env`).
+- `.env.nginx.production.example`: `NGINX_WEB_ROOT` documented default `/app/public`
+  (was `/var/www/html/public`).
+- README + CHANGELOG path references updated.
 
 ### Documentation
 
