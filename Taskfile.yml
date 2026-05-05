@@ -6,44 +6,21 @@ vars:
 
 tasks:
   default:
-    desc: The default task that shows help
+    desc: Show available tasks
     cmds:
-      - echo "Available tasks (in preferred order):"
-      - echo ""
-      - echo "  Bootstrap"
-      - echo "    env:init        Bootstrap .env.symfony from the API image"
-      - echo "    env:diff        Compare .env.symfony to the example shipped in the image"
-      - echo "    env:migrate     Convert a 2.x .env.docker.local to a 3.x .env.symfony"
-      - echo "    traefik_env     Setup .env.traefik (domain, email, dashboard auth)"
-      - echo ""
-      - echo "  Lifecycle"
-      - echo "    install         Install the project"
-      - echo "    reinstall       Reinstall from scratch. WARNING Deletes the database!"
-      - echo "    update          Pull updated images, recreate containers, run migrations"
-      - echo "    up              Start the environment"
-      - echo "    down            Remove all containers"
-      - echo "    purge           Remove all containers and volumes. WARNING Deletes the database!"
-      - echo "    stop            Stop all containers"
-      - echo ""
-      - echo "  Operations"
-      - echo "    logs            Follow docker logs"
-      - echo "    cc              Clear the cache"
-      - echo "    tenant_add      Add a new tenant group"
-      - echo "    user_add        Add a new user"
-      - echo "    load_templates  Install bundled templates and screen layouts"
-      - echo "    db:backup       Dump the bundled MariaDB to ./backup/<ts>.sql.gz"
-      - echo "    db:upgrade      Run mariadb-upgrade (after a MariaDB major bump)"
-      - echo ""
+      - task --list
+
+  # -- Lifecycle --------------------------------------------------------------
 
   install:
-    desc: Install the project
+    desc: Install the project — first-time setup, interactive (tenant + admin user)
     preconditions:
       - sh: "[ -f .env ]"
         msg: ".env missing — copy .env.example to .env, edit it, then re-run."
       - sh: "[ -f .env.symfony ]"
         msg: ".env.symfony missing — run 'task env:init' to bootstrap from the API image, edit it, then re-run."
     deps:
-      - _env_files
+      - bootstrap-env-files
     cmds:
       - echo "Installing"
       - "{{.COMPOSE}} pull"
@@ -53,67 +30,116 @@ tasks:
       - echo "Run database migrations and required updates"
       - "{{.COMPOSE}} exec os2display bin/console app:update"
       - echo "Clearing the cache"
-      - task cc
+      - task: cache:clear
       - echo "Create jwt key pair"
       - "{{.COMPOSE}} exec os2display bin/console lexik:jwt:generate-keypair --skip-if-exists"
-      - task tenant_add
+      - task: tenant:add
       - echo "CREATE AN ADMIN USER. CHOOSE THE TENANT YOU JUST CREATED."
-      - task user_add
-      - task load_templates
-      - task _show_notes
+      - task: user:add
+      - task: templates:install
+      - task: show-notes
 
-  traefik_env:
-    desc: Setup .env.traefik (domain, email, dashboard auth)
+  update:
+    desc: Pull updated images, recreate containers, run app:update (Doctrine migrations + cache:warmup)
+    deps:
+      - bootstrap-env-files
     cmds:
-      - |
-        if [ ! -f .env.traefik ]; then
-          echo ".env.traefik does not exist. Copying .env.traefik.production.example to .env.traefik..."
-          cp .env.traefik.production.example .env.traefik
-        fi
+      - "{{.COMPOSE}} pull"
+      - "{{.COMPOSE}} up --force-recreate --detach --remove-orphans"
+      - "{{.COMPOSE}} exec --user deploy os2display bin/console app:update"
+      - echo "NB! Run 'task templates:install' if the new image added templates."
 
-        # Ensure htpasswd is installed
-        if ! command -v htpasswd >/dev/null 2>&1; then
-          echo "Error: 'htpasswd' command not found."
-          echo "Please install it (usually from the 'apache2-utils' or 'httpd-tools' package) and try again."
-          exit 1
-        fi
+  up:
+    desc: Start the stack without recreating containers
+    deps:
+      - bootstrap-env-files
+    cmds:
+      - "{{.COMPOSE}} up -d"
 
-        echo ""
+  down:
+    desc: Remove all containers (preserves named volumes)
+    deps:
+      - stop
+    cmds:
+      - "{{.COMPOSE}} down"
 
-        echo "Configure Traefik environment"
-        echo "===================================================="
-        printf "Enter server domain (e.g. example.com): "
-        read SERVER_DOMAIN
-        printf "Enter email for Let's Encrypt (e.g. admin@example.com): "
-        read TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL
-        printf "Enter Traefik dashboard/admin username: "
-        read SERVER_DASHBOARD_USERNAME
-        printf "Enter Traefik dashboard/admin password: "
-        read -s SERVER_DASHBOARD_PASSWORD
+  stop:
+    desc: Stop all containers without altering anything else
+    cmds:
+      - "{{.COMPOSE}} stop"
 
-        # Generate htpasswd entry (username:hash)
-        HTPASSWD_RAW=$(htpasswd -nb "${SERVER_DASHBOARD_USERNAME}" "${SERVER_DASHBOARD_PASSWORD}")
+  purge:
+    desc: Remove all containers AND named volumes. WIPES the database!
+    prompt: |
+      This will remove all containers AND named volumes — the bundled MariaDB
+      database and the Redis cache will be DELETED. Bind mounts (./media,
+      ./jwt, traefik/letsencrypt) are preserved. Continue?
+    deps:
+      - stop
+    cmds:
+      - "{{.COMPOSE}} down --volumes --remove-orphans"
 
-        # Escape characters that break sed/env ($, /, &)
-        HTPASSWD_ESCAPED=$(printf '%s\n' "$HTPASSWD_RAW" \
-          | sed -e 's/[\/&]/\\&/g' -e 's/\$/\\$/g')
+  reinstall:
+    desc: Reinstall from scratch — purges all data, then installs
+    prompt: |
+      This is `task purge` followed by `task install`. ALL DATA in the bundled
+      MariaDB is DELETED; the Redis cache is rebuilt. Bind mounts (./media,
+      ./jwt) are preserved, but operator-edited env files MUST already be
+      configured (.env, .env.symfony, .env.<service>). Continue?
+    cmds:
+      - task: stop
+      - "{{.COMPOSE}} down --volumes --remove-orphans"
+      - task: install
 
-        # Update variables in .env.traefik
-        sed -i "s/^SERVER_DOMAIN=.*/SERVER_DOMAIN=${SERVER_DOMAIN}/" .env.traefik
-        sed -i "s/^TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL=.*/TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL=${TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL}/" .env.traefik
-        sed -i "s/^SERVER_DASHBOARD_AUTH=.*/SERVER_DASHBOARD_AUTH=${HTPASSWD_ESCAPED}/" .env.traefik
+  # -- Operations -------------------------------------------------------------
 
-        echo "===================================================="
-        echo ".env.traefik has been updated."
-        echo "Domain:   ${SERVER_DOMAIN}"
-        echo "Email:    ${TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL}"
-        echo "User:     ${SERVER_DASHBOARD_USERNAME}"
-        echo "Password: (hidden)"
-        echo "Auth:     (htpasswd line stored in SERVER_DASHBOARD_AUTH)"
-        echo "===================================================="
+  logs:
+    desc: Follow docker logs from all services (last 50 lines)
+    cmds:
+      - "{{.COMPOSE}} logs -f --tail=50"
+
+  cache:clear:
+    desc: Clear the application cache
+    aliases: [cc]
+    cmds:
+      - "{{.COMPOSE}} exec os2display bin/console cache:clear"
+
+  tenant:add:
+    desc: Add a new tenant group (interactive)
+    aliases: [tenant_add]
+    cmds:
+      - echo ""
+      - echo "Add a tenant"
+      - echo "===================================================="
+      - echo "A tenant is a group of users that share the same configuration. F. ex. IT, Library, Schools etc."
+      - echo "You have to provide tenant id, tenant title and optionally a description."
+      - echo "===================================================="
+      - echo ""
+      - "{{.COMPOSE}} exec -T os2display bin/console app:tenant:add"
+
+  user:add:
+    desc: Add a new user — editor or admin (interactive)
+    aliases: [user_add]
+    cmds:
+      - echo ""
+      - echo "Add a user"
+      - echo "===================================================="
+      - echo "You have to provide email, password, full name, role (editor or admin) and the tenant id."
+      - echo "===================================================="
+      - echo ""
+      - "{{.COMPOSE}} exec -T os2display bin/console app:user:add"
+
+  templates:install:
+    desc: Install bundled templates and screen layouts (--all --update)
+    aliases: [load_templates]
+    cmds:
+      - "{{.COMPOSE}} exec --user deploy os2display bin/console app:templates:install --all --update"
+      - "{{.COMPOSE}} exec --user deploy os2display bin/console app:screen-layouts:install --all --update --cleanupRegions"
+
+  # -- Env-file bootstrap & tooling -------------------------------------------
 
   env:init:
-    desc: Bootstrap .env.symfony from the API image (run once on first install)
+    desc: Bootstrap .env.symfony from the API image
     preconditions:
       - sh: "[ -f .env ]"
         msg: ".env missing — copy .env.example to .env first."
@@ -146,7 +172,7 @@ tasks:
         rm -f "$tmp"
 
   env:migrate:
-    desc: Convert a 2.x .env.docker.local into a 3.x-shaped .env.symfony.migrated (review, then mv into place)
+    desc: Convert a 1.x .env.docker.local into a 3.x-shaped .env.symfony.migrated
     cmds:
       - |
         if [ -f .env.docker.local ]; then
@@ -163,18 +189,71 @@ tasks:
         echo "Wrote $OUT (from $SRC)."
         echo "Review with: diff -u $SRC $OUT"
         echo "Apply with:  mv $OUT .env.symfony"
+        echo ""
         echo "Note: this only contains Symfony app config. PHP_*, NGINX_*, MARIADB_*"
         echo "values from your old .env.docker.local belong in .env.php, .env.nginx,"
         echo "and .env.mariadb respectively — copy from the .production.example files"
         echo "and edit per your deployment."
 
+  env:traefik:
+    desc: Setup .env.traefik (domain, email, dashboard auth) — interactive
+    aliases: [traefik_env]
+    cmds:
+      - |
+        if [ ! -f .env.traefik ]; then
+          echo ".env.traefik does not exist. Copying .env.traefik.production.example to .env.traefik..."
+          cp .env.traefik.production.example .env.traefik
+        fi
+
+        # Ensure htpasswd is installed
+        if ! command -v htpasswd >/dev/null 2>&1; then
+          echo "Error: 'htpasswd' command not found."
+          echo "Please install it (usually from the 'apache2-utils' or 'httpd-tools' package) and try again."
+          exit 1
+        fi
+
+        echo ""
+        echo "Configure Traefik environment"
+        echo "===================================================="
+        printf "Enter server domain (e.g. example.com): "
+        read SERVER_DOMAIN
+        printf "Enter email for Let's Encrypt (e.g. admin@example.com): "
+        read TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL
+        printf "Enter Traefik dashboard/admin username: "
+        read SERVER_DASHBOARD_USERNAME
+        printf "Enter Traefik dashboard/admin password: "
+        read -s SERVER_DASHBOARD_PASSWORD
+
+        # Generate htpasswd entry (username:hash)
+        HTPASSWD_RAW=$(htpasswd -nb "${SERVER_DASHBOARD_USERNAME}" "${SERVER_DASHBOARD_PASSWORD}")
+
+        # Escape characters that break sed/env ($, /, &)
+        HTPASSWD_ESCAPED=$(printf '%s\n' "$HTPASSWD_RAW" \
+          | sed -e 's/[\/&]/\\&/g' -e 's/\$/\\$/g')
+
+        # Update variables in .env.traefik
+        sed -i "s/^SERVER_DOMAIN=.*/SERVER_DOMAIN=${SERVER_DOMAIN}/" .env.traefik
+        sed -i "s/^TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL=.*/TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL=${TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL}/" .env.traefik
+        sed -i "s/^SERVER_DASHBOARD_AUTH=.*/SERVER_DASHBOARD_AUTH=${HTPASSWD_ESCAPED}/" .env.traefik
+
+        echo "===================================================="
+        echo ".env.traefik has been updated."
+        echo "Domain:   ${SERVER_DOMAIN}"
+        echo "Email:    ${TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL}"
+        echo "User:     ${SERVER_DASHBOARD_USERNAME}"
+        echo "Password: (hidden)"
+        echo "Auth:     (htpasswd line stored in SERVER_DASHBOARD_AUTH)"
+        echo "===================================================="
+
+  # -- Database ---------------------------------------------------------------
+
   db:backup:
-    desc: Dump the bundled MariaDB to ./backup/<timestamp>.sql.gz (online, --single-transaction)
+    desc: Dump the bundled MariaDB to ./backup/<UTC-timestamp>.sql.gz (online, --single-transaction)
     preconditions:
       - sh: "[ -f .env ]"
         msg: ".env missing — copy .env.example to .env first."
-      - sh: "[ -f .env.local ]"
-        msg: ".env.local missing — run 'task env:init' first."
+      - sh: "[ -f .env.mariadb ]"
+        msg: ".env.mariadb missing — copy .env.mariadb.production.example to .env.mariadb first."
     cmds:
       - mkdir -p backup
       - |
@@ -195,8 +274,8 @@ tasks:
   db:upgrade:
     desc: Run mariadb-upgrade against the bundled MariaDB (idempotent; run after a major version bump)
     preconditions:
-      - sh: "[ -f .env ]"
-        msg: ".env missing — copy .env.example to .env first."
+      - sh: "[ -f .env.mariadb ]"
+        msg: ".env.mariadb missing — copy .env.mariadb.production.example to .env.mariadb first."
     cmds:
       - |
         ROOT_PASSWORD=$(grep ^MARIADB_ROOT_PASSWORD= .env.mariadb | cut -d= -f2-)
@@ -206,89 +285,44 @@ tasks:
         fi
         {{.COMPOSE}} exec -T mariadb mariadb-upgrade --user=root --password="$ROOT_PASSWORD"
 
-  reinstall:
-    desc: Reinstall from scratch. Removes the database, all containers, and volumes.
+  # -- Dev tooling ------------------------------------------------------------
+
+  dev:lint:
+    desc: Run all linters in check mode (Markdown + YAML)
     deps:
-      - purge
-    cmds:
-      - task install
+      - dev:lint:md
+      - dev:lint:yaml
 
-  update:
-    desc: Pull updated images, recreate containers, run migrations
+  dev:lint:fix:
+    desc: Auto-fix all lint issues (Markdown + YAML)
     deps:
-      - _env_files
-    cmds:
-      - "{{.COMPOSE}} pull"
-      - "{{.COMPOSE}} up --force-recreate --detach --remove-orphans"
-      - "{{.COMPOSE}} exec --user deploy os2display bin/console app:update"
-      - echo "NB! Remember to load templates if they have changed (task load_templates)."
+      - dev:lint:md:fix
+      - dev:lint:yaml:fix
 
-  down:
-    desc: Remove all containers
-    deps:
-      - stop
+  dev:lint:md:
+    desc: Lint Markdown files
     cmds:
-      - "{{.COMPOSE}} down"
+      - docker compose --profile dev run --rm markdownlint markdownlint '**/*.md'
 
-  purge:
-    desc: Remove all containers and volumes
-    deps:
-      - stop
+  dev:lint:md:fix:
+    desc: Auto-fix Markdown lint issues (markdownlint --fix)
     cmds:
-      - "{{.COMPOSE}} down --volumes --remove-orphans"
+      - docker compose --profile dev run --rm markdownlint markdownlint --fix '**/*.md'
 
-  up:
-    desc: Take the environment up without altering the existing state of the containers
-    deps:
-      - _env_files
+  dev:lint:yaml:
+    desc: Lint YAML files (Prettier --check)
     cmds:
-      - "{{.COMPOSE}} up -d"
+      - docker compose --profile dev run --rm prettier '**/*.{yml,yaml}' --check
 
-  stop:
-    desc: Stop all containers without altering anything else
+  dev:lint:yaml:fix:
+    desc: Auto-fix YAML formatting (Prettier --write)
     cmds:
-      - "{{.COMPOSE}} stop"
+      - docker compose --profile dev run --rm prettier '**/*.{yml,yaml}' --write
 
-  tenant_add:
-    desc: Add a new tenant group
-    cmds:
-      - echo ""
-      - echo "Add a tenant"
-      - echo "===================================================="
-      - echo "A tenant is a group of users that share the same configuration. F. ex. IT, Library, Schools etc."
-      - echo "You have to provide tenant id, tenant title and optionally a description."
-      - echo "===================================================="
-      - echo ""
-      - "{{.COMPOSE}} exec -T os2display bin/console app:tenant:add"
+  # -- Internal ---------------------------------------------------------------
 
-  user_add:
-    desc: Add a new user (editor or admin)
-    cmds:
-      - echo ""
-      - echo "Add a user"
-      - echo "===================================================="
-      - echo "You have to provide email, password, full name, role (editor or admin) and the tenant id."
-      - echo "===================================================="
-      - echo ""
-      - "{{.COMPOSE}} exec -T os2display bin/console app:user:add"
-
-  load_templates:
-    desc: Install bundled templates and screen layouts (--all --update)
-    cmds:
-      - "{{.COMPOSE}} exec --user deploy os2display bin/console app:templates:install --all --update"
-      - "{{.COMPOSE}} exec --user deploy os2display bin/console app:screen-layouts:install --all --update --cleanupRegions"
-
-  logs:
-    desc: Follow docker logs from the containers
-    cmds:
-      - "{{.COMPOSE}} logs -f --tail=50"
-
-  cc:
-    desc: Clear the cache
-    cmds:
-      - "{{.COMPOSE}} exec os2display bin/console cache:clear"
-
-  _show_notes:
+  show-notes:
+    internal: true
     cmds:
       - |
         DOMAIN=$(grep ^OS2DISPLAY_SERVER_DOMAIN= .env | cut -d '=' -f 2)
@@ -300,7 +334,8 @@ tasks:
         echo "Screen: https://$DOMAIN/client"
         echo "===================================================="
 
-  _env_files:
+  bootstrap-env-files:
+    internal: true
     cmds:
       - |
         # Per-service env files bootstrap from their canonical .production.example

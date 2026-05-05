@@ -141,6 +141,36 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
 - Removed `SERVER_FRONTEND_NETWORK` from `.env.traefik.production.example`. The corresponding
   substitution on `traefik.networks` is gone.
 
+### Changed (operator surface) — Taskfile conventions
+
+- Task names follow the [official Taskfile guide](https://taskfile.dev/docs/guide) conventions:
+  `:`-namespaced for grouping, kebab-case for multi-word. Renames:
+
+  | Old | New | Old still works as |
+  |---|---|---|
+  | `cc` | `cache:clear` | alias |
+  | `tenant_add` | `tenant:add` | alias |
+  | `user_add` | `user:add` | alias |
+  | `load_templates` | `templates:install` | alias |
+  | `traefik_env` | `env:traefik` | alias |
+
+  Old names are kept as deprecated aliases for compatibility with operator scripts written
+  against earlier releases. Prefer the canonical `:`-namespaced forms going forward.
+- Internal helper tasks marked with `internal: true` instead of the `_`-prefix convention.
+  `_show_notes` → `show-notes`; `_env_files` → `bootstrap-env-files`. Hidden from
+  `task --list`; only callable from other tasks.
+- `purge` and `reinstall` now use Taskfile's
+  [warning prompts](https://taskfile.dev/docs/guide#warning-prompts). Both are destructive
+  (delete the bundled MariaDB volume) and require operator confirmation. Bypass via
+  `task --yes purge` for automation.
+
+### Added — dev-tooling task family
+
+- `dev:lint`, `dev:lint:md`, `dev:lint:md:fix`, `dev:lint:yaml`, `dev:lint:yaml:fix`,
+  `dev:lint:fix`. Wraps the existing `markdownlint` and `prettier` `dev`-profile services.
+  CI workflows still call docker compose directly (no Task dependency on runners); the Task
+  wrappers are local-dev convenience.
+
 ### Documentation
 
 - README rewritten end-to-end. Split into **Operator guide** (prerequisites, quick start,
