@@ -2,6 +2,15 @@
 
 ## [Unreleased] — release/3.0.0
 
+### Fixed
+
+- Traefik dashboard `PathPrefix` was misspelled `/treafik/dashboard`, so the dashboard router never matched. Corrected to `/traefik/dashboard`.
+
+### Security
+
+- Added the three TLS 1.3 cipher suites (`TLS_AES_256_GCM_SHA384`, `TLS_AES_128_GCM_SHA256`, `TLS_CHACHA20_POLY1305_SHA256`) to the modern TLS profile so 1.3 negotiations have an explicit allow-list. Both `traefik/dynamic-conf-letsencrypt.yaml` and `traefik/dynamic-conf-cert-file.yaml`.
+- Removed `serversTransport.insecureSkipVerify: true` from `traefik/traefik.yml`. The setting globally disabled backend certificate validation for every router. Backends in this stack speak plain HTTP internally so the flag was inert in practice, but it shadowed the default-deny posture and would silently weaken any future HTTPS backend.
+
 ### Changed (breaking)
 
 - `socket-proxy` service hardened: image moved from unpinned `itkdev/docker-socket-proxy` (Docker Hub) to `ghcr.io/tecnativa/docker-socket-proxy:v0.4.2` (upstream, version-pinned). Dropped `user: root`, added `read_only: true` + `tmpfs: [/run]`, `security_opt: [no-new-privileges:true]`, and a healthcheck against `/version`.

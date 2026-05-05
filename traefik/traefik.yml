@@ -39,10 +39,6 @@ certificatesResolvers:
       httpChallenge:
         entryPoint: web
 
-# https://doc.traefik.io/traefik/routing/services/#insecureskipverify
-serversTransport:
-  insecureSkipVerify: true
-
 # Logging
 log:
   level: INFO
