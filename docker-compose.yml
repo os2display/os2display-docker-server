@@ -1,8 +1,12 @@
 x-logging: &default-logging
   driver: json-file
   options:
-    max-size: "10m"
-    max-file: "3"
+    # Per-container ceiling: max-size × max-file. Defaults give ~30MB per
+    # container; the stack's seven services thus cap at ~210MB total.
+    # Tune via LOG_MAX_SIZE / LOG_MAX_FILE in .env, then `task update`.
+    # Inspect current usage with `task host:logs`.
+    max-size: "${LOG_MAX_SIZE:-10m}"
+    max-file: "${LOG_MAX_FILE:-3}"
 
 networks:
   frontend:

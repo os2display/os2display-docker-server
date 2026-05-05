@@ -26,7 +26,15 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
 - `task db:upgrade` — runs `mariadb-upgrade` explicitly. Idempotent, belt-and-suspenders over the
   entrypoint's auto-run on first start with new data.
 - Global JSON-file log rotation via the `x-logging` anchor (10MB × 3 files per service). Applied
-  to every service so a runaway container can't fill the host disk.
+  to every service so a runaway container can't fill the host disk. Tunable via
+  `LOG_MAX_SIZE` / `LOG_MAX_FILE` in `.env`.
+- `task logs:*` namespace consolidating log inspection: `logs:follow` (alias `logs`,
+  parameterised by `S=<service>` and `lines=<n>`) replaces the bare `logs` task; `logs:since`
+  prints non-following history (`T=1h S=os2display`); `logs:errors` greps the last hour for
+  error/critical/fatal/exception/stacktrace; `logs:access` projects traefik's JSON access log
+  to a compact line per request via `jq`; `logs:disk` shows per-container json-file log size
+  and the effective retention policy (reads via a transient `alpine` container with a read-only
+  `/var/lib/docker` mount; Linux only).
 - Healthchecks on `os2display` (PHP TCP probe to fpm 9000), `nginx-api` (`wget /health`), `redis`
   (`redis-cli ping`), `mariadb` (`healthcheck.sh --connect --innodb_initialized`), and
   `socket-proxy` (`wget /version`). `nginx-api.depends_on.os2display.condition: service_healthy`

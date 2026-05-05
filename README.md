@@ -482,6 +482,42 @@ the bottom. Per the v3 image's Vich uploader config, each tenant's uploads are s
 `./media/<tenantKey>/`, so the directory names ARE the tenant keys — the task doesn't query
 the database, it just reads the filesystem.
 
+#### How do I tail and triage logs?
+
+```bash
+task logs                       # follow all services, last 100 lines
+task logs S=os2display          # follow one service
+task logs S=traefik lines=500   # bigger backlog
+task logs:since T=30m           # everything from the last 30 minutes (no follow)
+task logs:since T=2h S=mariadb  # one service, last 2 hours
+task logs:errors                # error/critical/fatal/exception lines, last hour
+task logs:access                # tail traefik's JSON access log, one compact line per request
+```
+
+`logs` (alias of `logs:follow`) is the daily driver. `logs:since` is for "what happened since X"
+without the live tail. `logs:errors` greps the last hour across all services for the noisy
+keywords (`error`, `critical`, `emerg`, `fatal`, `exception`, `stacktrace`, case-insensitive) —
+useful first stop after a user reports something broke. `logs:access` requires `jq` on the
+host and projects each access-log JSON line to `{ts, host, path, status, dur_ms}`.
+
+#### How do I see docker log disk usage and tune retention?
+
+```bash
+task logs:disk
+```
+
+Prints per-container json-file log size (base + rotated siblings) and the effective retention
+policy. The stack caps each container at `LOG_MAX_SIZE × LOG_MAX_FILE` via the `x-logging`
+anchor in `docker-compose.yml`; defaults give ~30 MiB per container, ~210 MiB total.
+
+To change the policy, edit `LOG_MAX_SIZE` / `LOG_MAX_FILE` in `.env` (e.g. `LOG_MAX_SIZE=50m`
+for noisy debugging on a bigger host, or `LOG_MAX_SIZE=2m` on a small one), then run
+`task update`. A plain `task up` won't pick up new logging options — docker only applies them
+on container creation, which `update`'s `--force-recreate` triggers.
+
+The task itself reads sizes via a transient `alpine` container with a read-only `/var/lib/docker`
+mount, since docker's json log files are root-owned on the host. Linux only.
+
 ### Caveats and foot-guns
 
 A grab-bag of operator gotchas the stack documents but doesn't (and in some cases can't)
@@ -769,7 +805,11 @@ Bootstrap and env-file tooling
   env:traefik          Interactive .env.traefik setup            (alias: traefik_env)
 
 Operations
-  logs                 Follow docker logs (last 50 lines)
+  logs:follow          Follow service logs                        (alias: logs)
+  logs:since           Print logs since a duration without following
+  logs:errors          Surface error/critical/fatal/exception lines (last hour)
+  logs:access          Tail traefik's JSON access log, one compact line per request
+  logs:disk            Docker log disk usage per container + retention policy (Linux only)
   console              Run any bin/console command in os2display  (e.g. `task console -- list`)
   cache:clear          Clear the application cache               (alias: cc)
   tenant:add           Add a tenant group (interactive)          (alias: tenant_add)

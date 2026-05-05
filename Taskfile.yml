@@ -96,10 +96,88 @@ tasks:
 
   # -- Operations -------------------------------------------------------------
 
-  logs:
-    desc: Follow docker logs from all services (last 50 lines)
+  logs:follow:
+    desc: "Follow service logs (vars: S=<service> lines=<n>; defaults: all services, 100 lines)"
+    aliases: [logs]
+    # Note: defaults applied via the `default` template filter, NOT a `vars:`
+    # block. Taskfile v3 lets task-local vars block CLI overrides — declaring
+    # `vars: { S: "" }` here would make `task logs S=traefik` silently no-op.
     cmds:
-      - "{{.COMPOSE}} logs -f --tail=50"
+      - '{{.COMPOSE}} logs -f --tail={{.lines | default "100"}} {{.S | default ""}}'
+
+  logs:since:
+    desc: "Print logs since a duration without following (vars: T=<duration> S=<service>; e.g. T=1h S=os2display)"
+    cmds:
+      - '{{.COMPOSE}} logs --since={{.T | default "1h"}} {{.S | default ""}}'
+
+  logs:errors:
+    desc: Surface error/critical/fatal/exception lines across all services in the last hour
+    cmds:
+      - "{{.COMPOSE}} logs --since=1h --no-color | grep -iE '\\b(error|critical|emerg|fatal|exception|stacktrace)\\b' || true"
+
+  logs:access:
+    desc: Tail traefik's JSON access log, projected to a compact line per request
+    cmds:
+      - "{{.COMPOSE}} logs -f traefik 2>&1 | grep -E '^\\{' | jq -c '{ts:.StartUTC, host:.RequestHost, path:.RequestPath, status:.DownstreamStatus, dur_ms:(.Duration/1000000)}'"
+
+  logs:disk:
+    desc: |
+      Show docker log disk usage per container in this compose project, plus
+      the effective LOG_MAX_SIZE / LOG_MAX_FILE retention policy. Linux only
+      (the json-file logs at /var/lib/docker are root-owned, so reads happen
+      via a transient alpine container with a read-only mount).
+    cmds:
+      - |
+        if [ ! -d /var/lib/docker ]; then
+          echo "Error: /var/lib/docker not found. logs:disk requires a Linux host." >&2
+          exit 1
+        fi
+
+        ids=$({{.COMPOSE}} ps -aq 2>/dev/null)
+        if [ -z "$ids" ]; then
+          echo "No containers in this project — bring the stack up first."
+          exit 0
+        fi
+
+        # Per-container manifest (name|log-base-path), one line each. The
+        # base path is e.g. /var/lib/docker/containers/<id>/<id>-json.log;
+        # rotated siblings (.1, .2, ...) live next to it.
+        manifest=$(for id in $ids; do
+          name=$(docker inspect --format='{{`{{.Name}}`}}' "$id" | sed 's|^/||')
+          path=$(docker inspect --format='{{`{{.LogPath}}`}}' "$id")
+          [ -n "$path" ] && printf '%s|%s\n' "$name" "$path"
+        done)
+
+        # alpine container does the du since /var/lib/docker is root-owned.
+        printf '%s\n' "$manifest" | docker run --rm -i \
+          -v /var/lib/docker:/var/lib/docker:ro \
+          alpine sh -c '
+            printf "%-30s %12s\n" "CONTAINER" "LOG SIZE"
+            total_kb=0
+            while IFS="|" read -r name path; do
+              [ -z "$name" ] && continue
+              # du -ck on base + rotated siblings; tail picks the total row.
+              kb=$(du -ck "${path}"* 2>/dev/null | tail -1 | cut -f1)
+              kb=${kb:-0}
+              total_kb=$((total_kb + kb))
+              h=$(du -ch "${path}"* 2>/dev/null | tail -1 | cut -f1)
+              printf "  %-28s %12s\n" "$name" "${h:-—}"
+            done
+            printf "  %-28s %12s\n" "----" ""
+            # Integer-only formatting (busybox sh has no bc).
+            if [ "$total_kb" -lt 1024 ]; then tot="${total_kb}K"
+            elif [ "$total_kb" -lt 1048576 ]; then tot="$((total_kb / 1024))M"
+            else tot="$((total_kb / 1048576))G"
+            fi
+            printf "  %-28s %12s\n" "TOTAL" "$tot"
+          '
+
+        echo
+        MAX_SIZE=$(grep -E '^LOG_MAX_SIZE=' .env 2>/dev/null | cut -d= -f2-)
+        MAX_FILE=$(grep -E '^LOG_MAX_FILE=' .env 2>/dev/null | cut -d= -f2-)
+        printf "Retention: max-size=%s × max-file=%s per container\n" \
+          "${MAX_SIZE:-10m (default)}" "${MAX_FILE:-3 (default)}"
+        echo "Tune via LOG_MAX_SIZE / LOG_MAX_FILE in .env, then 'task update'."
 
   console:
     desc: "Run a Symfony bin/console command in the os2display container — e.g. `task console -- list`"
