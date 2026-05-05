@@ -166,15 +166,21 @@ See [Quick start](#quick-start-fresh-install).
 #### How do I upgrade the os2display api + nginx images?
 
 ```bash
+task db:backup                     # ALWAYS before task update — see Caveats
 $EDITOR .env                       # bump OS2DISPLAY_VERSION_API
 task update                        # pull, recreate, run app:update (migrations + cache:warmup)
 task env:diff                      # check whether the new image added Symfony env keys
                                    # — if yes, edit .env.symfony to match
 ```
 
-`task update` is non-destructive: it pulls fresh images, recreates the containers (preserving
-named volumes), and runs `bin/console app:update`. No data loss; rolling back is a matter of
-reverting `OS2DISPLAY_VERSION_API` and re-running.
+`task update` pulls fresh images, recreates the containers (preserving named volumes), and runs
+`bin/console app:update`. Image swaps and container recreation themselves don't touch data.
+What does is `app:update` — it applies Doctrine schema migrations from the new image. Some of
+those migrations include `DROP COLUMN`, type changes, or data transforms that **aren't
+reversible** by running an older image's `app:update` against the upgraded schema. Rolling
+back from a botched upgrade is "restore from `task db:backup` first, then revert
+`OS2DISPLAY_VERSION_API` and `task up`", not a clean tag swap. See
+[Caveats](#caveats-and-foot-guns).
 
 #### How do I upgrade the bundled MariaDB across a major version?
 
@@ -438,6 +444,14 @@ Traefik selects certs by SNI from the file provider. Your cert must include both
 SAN entries — or use a wildcard. Without one, the dashboard host gets the file provider's
 default cert (the first one declared), which won't match → browser TLS errors. Let's Encrypt
 mode handles this automatically (per-host issuance).
+
+**`task update` is not reversible by reverting the image tag.** `app:update` applies the new
+image's Doctrine schema migrations. Some migrations include `DROP COLUMN`, type changes, or
+data transforms that the previous image's `app:update` doesn't undo (and that Doctrine's
+`down()` method, if defined, may not lossly reverse). The on-disk data files are preserved
+across the image swap and container recreation, but the *schema* gets rewritten. Rolling back
+is `task db:backup`-restore + revert image tag — not a clean tag revert. **Always take a
+fresh `task db:backup` before `task update`**, not just relying on yesterday's snapshot.
 
 **Doctrine `serverVersion` mismatch produces wrong SQL.** `DATABASE_URL` in `.env.symfony` has
 a `serverVersion=` parameter that Doctrine reads to pick its SQL dialect. After a MariaDB
