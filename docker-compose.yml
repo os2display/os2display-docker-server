@@ -141,7 +141,7 @@ services:
       - redis-data:/data
 
   mariadb:
-    image: mariadb:10.11.16
+    image: mariadb:11.4.10
     profiles: [mariadb]
     restart: unless-stopped
     logging: *default-logging
