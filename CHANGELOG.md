@@ -164,6 +164,29 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
   (delete the bundled MariaDB volume) and require operator confirmation. Bypass via
   `task --yes purge` for automation.
 
+### Added — host inspection tasks
+
+- **`task host:resources`** — Linux-only. Reads host CPU + RAM from `/proc/meminfo` and
+  `nproc`, prints a compose override with `mem_limit` for every service. Fixed ceilings for
+  the bounded workloads (nginx-api, redis at 384 MiB above the in-process `--maxmemory`,
+  traefik, socket-proxy); 50%/30% of the dynamic allocation for os2display and mariadb.
+  Operator captures stdout into `compose.resource-limits.yml` (gitignored) and opts in via
+  `COMPOSE_FILE=docker-compose.yml:compose.resource-limits.yml`. Assumes dedicated host;
+  fails loudly with a useful error on hosts smaller than ~2.3 GiB or on non-Linux.
+- **`task host:php -- <mem_limit_mb>`** — derive PHP-FPM pool sizing
+  (`PHP_PM_MAX_CHILDREN`, `PHP_PM_START_SERVERS`, `PHP_PM_MIN/MAX_SPARE_SERVERS`,
+  `PHP_OPCACHE_MEMORY_CONSUMPTION`) from a given os2display container `mem_limit`. Heuristic:
+  60 MiB per Symfony+Doctrine worker, 50 MiB FPM overhead, OPcache 64/128/256 MiB depending on
+  container size. For 256 MiB → 2 workers + 64 MiB OPcache; 1024 MiB → 11 workers + 256 MiB
+  OPcache. Containers smaller than 256 MiB fail with an explicit error.
+- **`task host:disk`** — bind-mount sizes (`./media`, `./jwt`, `./backup`), named-volume
+  sizes (detected by `${COMPOSE_PROJECT_NAME}_*` prefix), and host filesystem free-space on
+  the project's mount point.
+- **`task host:disk:tenants`** — `./media` usage broken down by tenant subdirectory, sorted
+  descending. The v3 image's Vich uploader stores each tenant's uploads at
+  `./media/<tenantKey>/`, so the task reads the filesystem directly — no DB query.
+- `.gitignore` adds `compose.resource-limits.yml`.
+
 ### Added — generic Symfony CLI proxy
 
 - `task console` runs any `bin/console` command in the `os2display` container, e.g.

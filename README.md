@@ -397,6 +397,91 @@ task cache:clear                     # bin/console cache:clear inside os2display
 Run after editing `.env.symfony` (Doctrine and Symfony cache resolved-config), after upgrading
 the image (`task update` already does it), or when troubleshooting stale routes.
 
+#### How do I set resource limits for a dedicated host?
+
+The stack ships with no `mem_limit` / `cpus` constraints by default — fixed limits without
+measuring host capacity are guesses. `task host:resources` derives a reasonable allocation
+from `/proc/meminfo` + `nproc` for **dedicated** hosts and prints a compose override:
+
+```bash
+task host:resources                                            # see the recommendation
+task host:resources > compose.resource-limits.yml              # capture
+$EDITOR .env
+# add:  COMPOSE_FILE=docker-compose.yml:compose.resource-limits.yml
+task up                                                        # picks up the limits
+```
+
+The recommendation sets `mem_limit` for **every service**, not just the memory-hungry ones:
+
+- **Sized to host RAM** (50% / 30% of dynamic allocation): `os2display`, `mariadb`.
+- **Fixed ceilings** (bounded workloads, host-independent): `nginx-api` 128 MiB, `redis`
+  384 MiB (above the in-process `--maxmemory 256mb` so the kernel-level OOM kill is a hard
+  stop, not normal operation), `traefik` 256 MiB, `socket-proxy` 64 MiB.
+
+The task is **Linux-only** and assumes a **dedicated** host. On macOS it exits with an error;
+on shared hosts (a VPS also running other services), scale the recommended values down before
+applying. Hosts with less than ~2.3 GiB of RAM will fail with an explicit error message —
+the dynamic split needs at least 1 GiB on top of the fixed ceilings.
+
+`compose.resource-limits.yml` is gitignored — it's host-specific and operator-generated, never
+committed.
+
+#### How do I tune PHP-FPM for the os2display container's memory limit?
+
+Once `host:resources` (or a hand-set `mem_limit`) caps the os2display container at, say, 256 MiB,
+PHP-FPM's `pm.max_children`, OPcache memory, and the spare-worker thresholds need to fit
+inside that ceiling. Otherwise PHP-FPM will spawn beyond the cgroup memory limit and
+containers OOM-kill themselves under load.
+
+```bash
+task host:php -- 256                         # tight ceiling: 2 workers
+task host:php -- 1024                        # comfortable mid-size: ~11 workers
+task host:php -- 4096                        # big host: ~60+ workers
+```
+
+The task prints math + recommendations to stderr and the env-var assignments on stdout, so
+operators can capture the override:
+
+```bash
+task host:php -- 256 >> .env.php             # append; remove the duplicates afterwards
+$EDITOR .env.php                             # confirm only one of each PHP_PM_* / PHP_OPCACHE_*
+task up                                      # picks up the new pool sizing
+```
+
+Heuristic (Symfony + Doctrine + warm OPcache):
+
+- Per-worker estimate: 60 MiB (conservative; real is 40–80 MiB depending on bundles).
+- PHP-FPM overhead (master + non-pool): 50 MiB.
+- OPcache memory: 64 MiB / 128 MiB / 256 MiB depending on container size.
+- `pm.max_children = (mem_limit − OPcache − overhead) / 60`, with a floor of 2.
+- `pm.start_servers ≈ max_children / 4`; `pm.min_spare ≈ /5`; `pm.max_spare ≈ /2`.
+
+Hosts smaller than 256 MiB on the os2display container will fail with an explicit error —
+after OPcache + overhead there isn't enough budget for two workers. Bump `mem_limit` (in
+`compose.resource-limits.yml`) to at least 256 MiB and re-run.
+
+#### How do I see overall disk usage of the stack?
+
+```bash
+task host:disk
+```
+
+Reports bind-mount sizes (`./media`, `./jwt`, `./backup`), named-volume sizes (the bundled
+MariaDB and Redis volumes, detected by their `${COMPOSE_PROJECT_NAME}_*` prefix), and host
+filesystem free-space on the project's mount point. Use it before / after `task db:backup` to
+confirm the dump landed, or before scaling up the host to see the actual stack footprint.
+
+#### How do I see media disk usage per tenant?
+
+```bash
+task host:disk:tenants
+```
+
+Walks `./media/`, prints each tenant's subdirectory size sorted descending, with a total at
+the bottom. Per the v3 image's Vich uploader config, each tenant's uploads are stored at
+`./media/<tenantKey>/`, so the directory names ARE the tenant keys — the task doesn't query
+the database, it just reads the filesystem.
+
 ### Caveats and foot-guns
 
 A grab-bag of operator gotchas the stack documents but doesn't (and in some cases can't)
@@ -692,6 +777,12 @@ Operations
   templates:install    Install bundled templates + screen layouts(alias: load_templates)
   db:backup            Dump the bundled MariaDB to ./backup/<UTC-ts>.sql.gz
   db:upgrade           Run mariadb-upgrade after a MariaDB major bump
+
+Host inspection
+  host:resources       Recommend mem_limit values for a dedicated host (Linux only)
+  host:php             Recommend PHP-FPM pool sizing for a given os2display mem_limit
+  host:disk            Stack disk usage vs host disk available
+  host:disk:tenants    ./media usage broken down by tenant key
 
 Dev tooling
   dev:lint             Check Markdown + YAML
