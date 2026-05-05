@@ -138,10 +138,26 @@ v3 image's env contract. Skim the **Migration from 2.x** section at the bottom b
 
 ### Documentation
 
-- README documents the UID 1042 (deploy, api) / UID 101 (nginx-unprivileged) permission contract
-  for the `./media` and `./jwt` bind mounts. Added a hint about debugging broken thumbnails.
-- README "Upgrading the bundled MariaDB across a major version" section with the full recipe and
-  rollback path via the gzipped dump.
+- README rewritten end-to-end. Split into **Operator guide** (prerequisites, quick start,
+  per-service config files, stack composition, network topology, cookbook, caveats &
+  foot-guns, 2.x→3.x migration) and **Developer guide** (design principles, local dev,
+  repository layout, linting, CI). Plus a **Reference** section (all tasks, image
+  registries).
+- New **Cookbook** with How-do-I sections covering install, upgrade, MariaDB major bump,
+  cert-provider switch, external DB / proxy, shared frontend network, PHP/nginx tuning,
+  backup + restore, tenant + user creation, template install, registry auth, log + cache.
+- New **Caveats and foot-guns** section enumerating the operator gotchas the stack documents
+  but doesn't (and in some cases can't) prevent: cert-file SAN coverage, Doctrine
+  `serverVersion` mismatch, `.env.mariadb` ↔ `.env.symfony` credential coupling, `./media`
+  permission contract, `PHP_OPCACHE_VALIDATE_TIMESTAMPS=0` in production, Let's Encrypt
+  rate limits, destructive vs non-destructive task semantics, `task env:init FORCE=1`,
+  compose profile gating only applies to services, `NGINX_MAX_BODY_SIZE` ≥
+  `PHP_UPLOAD_MAX_FILESIZE`, `mysql_native_password` deprecation horizon, Docker Hub
+  anonymous rate limits, external `frontend` network manual creation, auto-loaded
+  `compose.override.yml`, editing committed `.production.example` templates.
+- New **Design principles** section articulating the two repo-level constraints we work
+  under: only Task and docker compose required locally; build on stack standards (don't
+  reinvent features compose / Task / the upstream image already provide).
 - README "Image registries and authentication" section with the registry inventory (3 images on
   GHCR, 5 on Docker Hub), Docker Hub anon rate-limit guidance, GHCR auth recipe (PAT and `gh`
   variants), and a `docker/login-action` snippet for CI if one of the GHCR images flips private.
