@@ -1,13 +1,14 @@
-# OS2display v2 Hosting and Deployment
+# OS2display v3 Hosting and Deployment
 
-This is a deployment tool designed for hosting the OS2display v2 application using Docker. It provides a Docker-based setup, pre-configured files, and task automation to simplify the deployment and management of the application.
+This is a deployment tool designed for hosting the OS2display application using Docker. It provides a Docker Compose 
+based setup, pre-configured files, and task automation to simplify the deployment and management of the application.
 
 ## Prerequisites
 
 Before you begin, ensure you have the following installed on your system:
 1. **Docker**: Install Docker Engine (version 20.10 or later).
 2. **Docker Compose**: Use Docker Compose v2 (integrated with the `docker compose` command).
-3. **Task**: Install the Taskfile CLI tool. You can find installation instructions [here](https://taskfile.dev/#/installation).
+3. **Task**: Install the Taskfile CLI tool. You can find installation instructions at [taskfile.dev](https://taskfile.dev/#/installation).
 
 Make sure your user has the necessary permissions to run Docker commands (e.g., being part of the `docker` group).
 
@@ -53,12 +54,24 @@ This project can only run in secure mode using HTTPS (port 443). A Traefik rever
 
 ### Steps to Configure Secure Mode:
 1. **Domain Name**: Use a fully qualified domain name (FQDN) that resolves to your server's IP address.
-2. **SSL Certificate**, either: 
+2. **SSL Certificate**, either:
    - Let traefik generate a certificate using Let's Encrypt (default).
    - Place the certificate file (`docker.crt`) and the private key file (`docker.key`) in the `traefik/ssl` directory.
-3. **Update Configuration**: Ensure the domain name is correctly configured in the `.env.docker.local` file.
+3. **Update Configuration**: Ensure the domain name is correctly configured in `.env` (`OS2DISPLAY_SERVER_DOMAIN`).
 
 Without a valid domain name and SSL certificate, the project will not function as expected.
+
+## Configuration files
+
+This setup separates orchestration config (read by docker compose) from application config (passed to the API container):
+
+| File | Purpose | Bootstrap |
+|---|---|---|
+| `.env` | Orchestration: project name, domain, image versions, profile toggles, MariaDB credentials, PHP runtime tuning, admin/screen client settings. Read by `docker compose` for variable substitution. | `cp .env.example .env` |
+| `.env.local` | Application config for the API service: `APP_SECRET`, `APP_DATABASE_URL`, JWT, OIDC, Redis, calendar feed, etc. Mounted into the `os2display` container via `env_file:`. | `cp .env.local.example .env.local` |
+| `.env.traefik` | Traefik dashboard auth, Let's Encrypt email, cert provider. | `task traefik_env` (interactive) or `cp .env.traefik.example .env.traefik` |
+
+Edit each file before running `task install`.
 
 ## Available Tasks
 
@@ -76,7 +89,7 @@ The project uses a `Taskfile.yml` to simplify common operations. Below is a list
 - **`task user_add`**: Adds a new user (editor or admin) to a tenant.
 
 ### Templates and Screen Layouts
-- **`task load_templates`**: Loads templates and screen layouts based on the configuration in `.env.docker.local`.
+- **`task load_templates`**: Loads templates and screen layouts based on `TASK_VERSION_TEMPLATES`, `TASK_TEMPLATES`, and `TASK_SCREEN_LAYOUTS` in `.env`.
 
 ### Maintenance
 - **`task logs`**: Follows the logs from the Docker containers.
@@ -84,8 +97,10 @@ The project uses a `Taskfile.yml` to simplify common operations. Below is a list
 
 ### Pre-installation Notes
 Before running `task install`, ensure the following:
-1. Update `.env.docker.local` with your domain name (replace all 5 instances) and set secure passwords.
-2. Place your SSL certificate files (`docker.crt` and `docker.key`) in the `traefik/ssl` directory.
+1. `cp .env.example .env` and set your `OS2DISPLAY_SERVER_DOMAIN`, image versions, and MariaDB credentials.
+2. `cp .env.local.example .env.local` and set `APP_SECRET`, `APP_JWT_PASSPHRASE`, `APP_DATABASE_URL`, and any OIDC values you need.
+3. Run `task traefik_env` to configure the Traefik dashboard credentials and Let's Encrypt email (or copy `.env.traefik.example` to `.env.traefik` and edit by hand).
+4. If using a custom SSL certificate (`SERVER_CERT_PROVIDER=cert-file`), place `docker.crt` and `docker.key` in `traefik/ssl/`.
 
 For a full list of tasks, run:
 ```bash
