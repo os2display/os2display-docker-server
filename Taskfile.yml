@@ -31,9 +31,7 @@ tasks:
       - echo "Installing"
       - ./scripts/install-secrets.sh
       - "{{.COMPOSE}} pull"
-      - "{{.COMPOSE}} up --force-recreate --detach --remove-orphans"
-      - echo "Waiting for database to be ready"
-      - sleep 20
+      - "{{.COMPOSE}} up --force-recreate --detach --remove-orphans --wait"
       - echo "Run database migrations and required updates"
       - task: console
         vars: { CLI_ARGS: "app:update" }
@@ -55,18 +53,18 @@ tasks:
         msg: ".env.symfony missing — run 'task env:init' first."
     cmds:
       - "{{.COMPOSE}} pull"
-      - "{{.COMPOSE}} up --force-recreate --detach --remove-orphans"
+      - "{{.COMPOSE}} up --force-recreate --detach --remove-orphans --wait"
       - task: console
         vars: { EXEC_FLAGS: "--user deploy", CLI_ARGS: "app:update" }
       - echo "NB! Run 'task templates:install' if the new image added templates."
 
   up:
-    desc: Start the stack without recreating containers
+    desc: Start the stack without recreating containers; blocks until healthchecks pass
     preconditions:
       - sh: "[ -f .env.symfony ]"
         msg: ".env.symfony missing — run 'task env:init' first."
     cmds:
-      - "{{.COMPOSE}} up -d"
+      - "{{.COMPOSE}} up -d --wait"
 
   down:
     desc: Remove all containers (preserves named volumes)

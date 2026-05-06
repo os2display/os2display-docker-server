@@ -978,7 +978,7 @@ churn for the casual review cycle.
 Lifecycle
   install              Install the project — first-time setup (interactive)
   update               Pull images, recreate containers, run app:update
-  up                   Start the stack without recreating containers
+  up                   Start the stack; blocks until healthchecks pass
   down                 Remove all containers (preserves named volumes)
   stop                 Stop all containers
   purge                Remove all containers AND named volumes  (prompts)
