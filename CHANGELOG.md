@@ -208,6 +208,13 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
   removes `traefik/ssl/dev.{crt,key}`. Bind mounts and operator env files are preserved. Uses
   plain `docker compose` (no `--env-file` flags) so the task works even if env files were
   partially wiped.
+- **`.env.traefik.example` ships `SERVER_DASHBOARD_AUTH=CHANGE_ME`** instead of the previous
+  plaintext `admin:password` placeholder (which wasn't htpasswd-formatted and would have
+  silently rejected every login). Matches the `MARIADB_*=CHANGE_ME` sentinel pattern from
+  B22. `task install` precondition refuses to run while the sentinel is in place, pointing
+  operators at `task env:traefik` (the canonical setup path; auto-generates the apr1 hash via
+  `alpine/openssl passwd`). Operators who prefer to set the htpasswd value manually can do so
+  in `.env.traefik` and the precondition passes.
 
 ### Changed (operator surface) — Taskfile conventions
 
