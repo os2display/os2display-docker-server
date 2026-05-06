@@ -78,6 +78,15 @@ jobs:
       - name: install-secrets (would be `task install`'s first step)
         run: ./scripts/install-secrets.sh
 
+      - name: Pre-create bind-mount dirs with container-writable perms
+        # The os2display container writes JWT keys as UID 1042 (`deploy`)
+        # per README's deploy-host UID/GID contract, and uploads to
+        # ./media as the same user. CI runners aren't the operator's
+        # 1042-group host, so chown the bind-mount sources to match.
+        run: |
+          mkdir -p jwt media backup
+          sudo chown -R 1042:1042 jwt media backup
+
       - name: task up
         # `task up` uses `compose up -d --wait`, so this blocks until every
         # service's healthcheck passes. Migrations on the next step can
