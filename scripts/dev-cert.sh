@@ -22,10 +22,11 @@ CERT_DIR="traefik/ssl"
 CERT_FILE="$CERT_DIR/dev.crt"
 KEY_FILE="$CERT_DIR/dev.key"
 
-APP_DOMAIN=$(grep -E '^OS2DISPLAY_SERVER_DOMAIN=' .env 2>/dev/null | cut -d= -f2- || true)
-DASH_DOMAIN=$(grep -E '^SERVER_DOMAIN=' .env.traefik 2>/dev/null | cut -d= -f2- || true)
-APP_DOMAIN="${APP_DOMAIN:-os2display.localhost}"
-DASH_DOMAIN="${DASH_DOMAIN:-traefik.localhost}"
+# OS2DISPLAY_SERVER_DOMAIN (.env) and SERVER_DOMAIN (.env.traefik) both
+# come from Taskfile's `dotenv:` directive. Defaults kick in when env
+# files aren't bootstrapped yet (e.g. fresh checkout, before `task env:init`).
+APP_DOMAIN="${OS2DISPLAY_SERVER_DOMAIN:-os2display.localhost}"
+DASH_DOMAIN="${SERVER_DOMAIN:-traefik.localhost}"
 
 if [ -f "$CERT_FILE" ] && [ "${FORCE:-0}" != "1" ]; then
   echo "Error: $CERT_FILE already exists. Set FORCE=1 to overwrite." >&2

@@ -187,6 +187,28 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
 - Removed `SERVER_FRONTEND_NETWORK` from `.env.traefik.example`. The corresponding
   substitution on `traefik.networks` is gone.
 
+### Changed — Taskfile dotenv + bootstrap consolidation
+
+- Taskfile loads `.env`, `.env.mariadb`, and `.env.traefik` via
+  [`dotenv:`](https://taskfile.dev/docs/guide#env-files) at the top level. Tasks and scripts
+  reference orchestration vars directly via `$OS2DISPLAY_VERSION_API` / `$MARIADB_USER` /
+  `$SERVER_DOMAIN` / `$LOG_MAX_SIZE` etc. instead of `grep ^X= .env | cut -d= -f2`. Greps
+  removed from `env:diff`, `host:disk`, and all `scripts/*.sh`. `.env.symfony` is kept out of
+  the dotenv list — exposing `APP_SECRET` / `JWT_PASSPHRASE` / OAuth tokens to every subshell
+  would be more surface than the convenience justifies. Missing dotenv files are silently
+  ignored, so fresh checkouts still work before `task env:init` runs.
+- **`task env:init` is now the single bootstrap entry point.** It creates `.env` (prompting for
+  the public domain, defaulting `os2display.localhost`), copies missing per-service env files
+  from their `.example` templates, and extracts `.env.symfony` from the API image with random
+  APP_SECRET / JWT_PASSPHRASE and a serverVersion matched to the mariadb compose pin. The
+  previous internal `bootstrap-env-files` task is gone; `task install` / `up` / `update` now
+  precondition on `.env.symfony` directly — running `env:init` is the explicit gate that
+  unlocks them.
+- New **`task dev:teardown`** (prompt-gated): `compose down --volumes --remove-orphans` plus
+  removes `traefik/ssl/dev.{crt,key}`. Bind mounts and operator env files are preserved. Uses
+  plain `docker compose` (no `--env-file` flags) so the task works even if env files were
+  partially wiped.
+
 ### Changed (operator surface) — Taskfile conventions
 
 - Task names follow the [official Taskfile guide](https://taskfile.dev/docs/guide) conventions:

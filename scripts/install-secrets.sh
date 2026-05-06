@@ -13,20 +13,15 @@
 
 set -euo pipefail
 
-if [ ! -f .env.mariadb ]; then
-  # Bootstrap will copy from .env.mariadb.example before we get here, but
-  # be defensive in case someone runs the script standalone.
-  echo "Error: .env.mariadb missing." >&2
+if [ ! -f .env.mariadb ] || [ ! -f .env.symfony ]; then
+  echo "Error: env files missing — run 'task env:init' first." >&2
   exit 1
 fi
 
-if ! grep -q '^MARIADB_\(PASSWORD\|ROOT_PASSWORD\)=CHANGE_ME$' .env.mariadb; then
+# Sentinel detection via env vars (loaded by Taskfile's `dotenv:` directive).
+# If neither password is the CHANGE_ME placeholder, there's nothing to do.
+if [ "${MARIADB_PASSWORD:-}" != "CHANGE_ME" ] && [ "${MARIADB_ROOT_PASSWORD:-}" != "CHANGE_ME" ]; then
   exit 0
-fi
-
-if [ ! -f .env.symfony ]; then
-  echo "Error: .env.symfony missing — run 'task env:init' first." >&2
-  exit 1
 fi
 
 USER_PW=$(docker run --rm alpine/openssl rand -hex 16)
@@ -45,8 +40,7 @@ sed_inplace "s|^MARIADB_ROOT_PASSWORD=CHANGE_ME$|MARIADB_ROOT_PASSWORD=${ROOT_PW
 # Sync the application-user password into DATABASE_URL. Targeted swap of
 # just the password component (between `://USER:` and `@HOST`); the rest
 # of the URL — host, port, db, serverVersion — is left untouched.
-USER=$(grep '^MARIADB_USER=' .env.mariadb | cut -d= -f2)
-sed_inplace "s|://${USER}:[^@]*@|://${USER}:${USER_PW}@|" .env.symfony
+sed_inplace "s|://${MARIADB_USER}:[^@]*@|://${MARIADB_USER}:${USER_PW}@|" .env.symfony
 
 echo "Generated random MariaDB credentials:"
 echo "  MARIADB_PASSWORD       (in .env.mariadb)"

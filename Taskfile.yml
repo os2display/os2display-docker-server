@@ -1,6 +1,14 @@
 version: "3"
 silent: true
 
+# Load orchestration env files so tasks (and the scripts they call) can
+# reference values directly via `$VAR` / `{{.VAR}}` instead of grepping the
+# files. Missing files are silently ignored — fresh checkouts work fine
+# until `task env:init` creates them. We deliberately do NOT load
+# `.env.symfony`: exposing `APP_SECRET` / `JWT_PASSPHRASE` / OAuth tokens
+# to every subshell would be more surface than the convenience justifies.
+dotenv: [".env", ".env.mariadb", ".env.traefik"]
+
 vars:
   COMPOSE: docker compose --env-file .env --env-file .env.traefik
 
@@ -15,12 +23,8 @@ tasks:
   install:
     desc: Install the project — first-time setup, interactive (tenant + admin user)
     preconditions:
-      - sh: "[ -f .env ]"
-        msg: ".env missing — copy .env.example to .env, edit it, then re-run."
       - sh: "[ -f .env.symfony ]"
-        msg: ".env.symfony missing — run 'task env:init' to bootstrap from the API image, edit it, then re-run."
-    deps:
-      - bootstrap-env-files
+        msg: ".env.symfony missing — run 'task env:init' first to bootstrap all env files."
     cmds:
       - echo "Installing"
       - ./scripts/install-secrets.sh
@@ -44,8 +48,9 @@ tasks:
 
   update:
     desc: Pull updated images, recreate containers, run app:update (Doctrine migrations + cache:warmup)
-    deps:
-      - bootstrap-env-files
+    preconditions:
+      - sh: "[ -f .env.symfony ]"
+        msg: ".env.symfony missing — run 'task env:init' first."
     cmds:
       - "{{.COMPOSE}} pull"
       - "{{.COMPOSE}} up --force-recreate --detach --remove-orphans"
@@ -55,8 +60,9 @@ tasks:
 
   up:
     desc: Start the stack without recreating containers
-    deps:
-      - bootstrap-env-files
+    preconditions:
+      - sh: "[ -f .env.symfony ]"
+        msg: ".env.symfony missing — run 'task env:init' first."
     cmds:
       - "{{.COMPOSE}} up -d"
 
@@ -192,10 +198,14 @@ tasks:
 
   env:init:
     desc: |
-      Bootstrap .env.symfony from the API image. Auto-generates random
-      APP_SECRET + JWT_PASSPHRASE and bumps DATABASE_URL serverVersion to
-      match the mariadb image pinned in docker-compose.yml. FORCE=1 to
-      overwrite an existing .env.symfony.
+      Single bootstrap entry point: creates .env (prompting for domain) +
+      per-service .env.{php,nginx,mariadb,traefik} from their .example
+      templates + .env.symfony extracted from the pinned API image.
+      Auto-generates random APP_SECRET + JWT_PASSPHRASE and bumps
+      DATABASE_URL serverVersion to match the mariadb image pinned in
+      docker-compose.yml. Idempotent — re-running keeps operator-edited
+      files. FORCE=1 to overwrite an existing .env.symfony (e.g. after
+      bumping OS2DISPLAY_VERSION_API).
     cmds:
       - ./scripts/env-init.sh
 
@@ -208,8 +218,7 @@ tasks:
         msg: ".env.symfony missing — run 'task env:init' first."
     cmds:
       - |
-        VERSION=$(grep ^OS2DISPLAY_VERSION_API= .env | cut -d= -f2)
-        IMAGE="ghcr.io/os2display/display-api-service:${VERSION}"
+        IMAGE="ghcr.io/os2display/display-api-service:${OS2DISPLAY_VERSION_API}"
         tmp=$(mktemp)
         docker run --rm --entrypoint sh "$IMAGE" -c 'cat /app/.env' > "$tmp"
         diff -u .env.symfony "$tmp" || true
@@ -279,8 +288,7 @@ tasks:
         done
         echo
         echo "Named volumes:"
-        PROJECT=$(grep ^COMPOSE_PROJECT_NAME= .env 2>/dev/null | cut -d= -f2-)
-        PROJECT="${PROJECT:-os2display}"
+        PROJECT="${COMPOSE_PROJECT_NAME:-os2display}"
         docker system df -v 2>/dev/null \
           | awk -v p="^${PROJECT}_(mariadb|redis-data)" '$1 ~ p {printf "  %-30s %s\n", $1, $3}'
         echo
@@ -403,6 +411,25 @@ tasks:
     cmds:
       - ./scripts/dev-cert.sh
 
+  dev:teardown:
+    desc: |
+      Tear down the dev stack: removes containers + named volumes (mariadb,
+      redis), and the dev cert at traefik/ssl/dev.{crt,key}. Bind mounts
+      (./media, ./jwt, traefik/letsencrypt) and operator env files (.env,
+      .env.*) are preserved — re-run `task install` to bring up a fresh
+      stack against the same env config. Prompt-gated.
+    prompt: |
+      This will remove ALL containers AND the bundled MariaDB + Redis
+      named volumes (DATA WIPE), plus the self-signed dev cert. Bind
+      mounts and env files are kept. Continue?
+    cmds:
+      # Plain `docker compose` (no --env-file flags) so teardown works even
+      # if env files are missing or partially wiped. Compose falls back to
+      # default `.env` discovery and the project-dir name.
+      - docker compose down --volumes --remove-orphans
+      - rm -f traefik/ssl/dev.crt traefik/ssl/dev.key
+      - echo "Dev stack torn down. Run 'task install' to bring it back up."
+
   # -- Internal ---------------------------------------------------------------
 
   show-notes:
@@ -417,17 +444,3 @@ tasks:
         echo "Admin: https://$DOMAIN/admin"
         echo "Screen: https://$DOMAIN/client"
         echo "===================================================="
-
-  bootstrap-env-files:
-    internal: true
-    cmds:
-      - |
-        # Per-service env files bootstrap from their canonical .example
-        # template if not yet edited by the operator. .env.symfony is image-
-        # bootstrapped by `task env:init` and is not auto-created here.
-        for svc in php nginx mariadb traefik; do
-          if [ ! -f ".env.$svc" ]; then
-            echo ".env.$svc does not exist. Copying .env.$svc.example to .env.$svc..."
-            cp ".env.$svc.example" ".env.$svc"
-          fi
-        done

@@ -58,8 +58,9 @@ printf '%s' "$manifest" | docker run --rm -i \
   '
 
 echo
-MAX_SIZE=$(grep -E '^LOG_MAX_SIZE=' .env 2>/dev/null | cut -d= -f2- || true)
-MAX_FILE=$(grep -E '^LOG_MAX_FILE=' .env 2>/dev/null | cut -d= -f2- || true)
+# LOG_MAX_SIZE / LOG_MAX_FILE come from .env via Taskfile's `dotenv:`
+# directive; the shell defaults below kick in when the script runs outside
+# `task` or when the operator hasn't tuned the values.
 printf "Retention: max-size=%s × max-file=%s per container\n" \
-  "${MAX_SIZE:-10m (default)}" "${MAX_FILE:-3 (default)}"
+  "${LOG_MAX_SIZE:-10m (default)}" "${LOG_MAX_FILE:-3 (default)}"
 echo "Tune via LOG_MAX_SIZE / LOG_MAX_FILE in .env, then 'task update'."
