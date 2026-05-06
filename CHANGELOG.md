@@ -13,9 +13,11 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
 
 ### Added
 
-- `task env:init` — extracts the annotated `.env` shipped at `/app/.env` in the API
-  image and writes it to `.env.local`. Replaces the previous checked-in `.env.local.example`; the
-  image is now the single source of truth for the operator-facing env surface.
+- `task env:init` — extracts the annotated `.env` shipped at `/app/.env` in the API image and
+  writes it to `.env.symfony`. Auto-generates random `APP_SECRET` + `JWT_PASSPHRASE` (32-byte
+  hex via `alpine/openssl rand`) and bumps `DATABASE_URL` `serverVersion` to match the mariadb
+  image pinned in `docker-compose.yml`. Replaces the previous checked-in `.env.local.example`;
+  the image is now the single source of truth for the operator-facing env surface.
 - `task env:diff` — diffs your `.env.local` against the example in the currently-pinned image.
 - `task env:migrate` — rewrites a 2.x `.env.docker.local` (or an APP_-prefixed `.env.local`) to
   v3 bare-name format, output to `.env.local.migrated` for review.
@@ -48,17 +50,30 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
 - `scripts/` directory: extracted helpers for the longer Taskfile bodies that the upstream
   [Taskfile style guide](https://taskfile.dev/styleguide/) recommends moving out
   ("Prefer using external scripts instead of multi-line commands"). `host-resources.sh`,
-  `host-php.sh`, `logs-disk.sh`, and `env-traefik.sh` replace ~50–70-line inline blocks; their
-  Taskfile entries shrink to a single `./scripts/<name>.sh` invocation. All scripts run under
+  `host-php.sh`, `logs-disk.sh`, `env-traefik.sh`, `env-init.sh`, `install-secrets.sh`, and
+  `dev-cert.sh` replace inline blocks (or implement new behavior); their Taskfile entries
+  shrink to a single `./scripts/<name>.sh` invocation. All scripts run under
   `set -euo pipefail` and are linted by `shellcheck` via the `shellcheck` dev-profile service
-  and the new `task dev:lint:sh` / `Shell` CI workflow. Borderline tasks (`host:disk`,
-  `db:backup`, `env:init`, etc.) stay inline.
+  and the `task dev:lint:sh` / `Shell` CI workflow. Borderline tasks (`host:disk`,
+  `db:backup`, `env:diff`, etc.) stay inline.
 - `task dev:cert` — generates a self-signed certificate at `traefik/ssl/dev.{crt,key}` for
   local-host development with `SERVER_CERT_PROVIDER=cert-file`. Wraps an `openssl req -x509`
   invocation in a transient `alpine/openssl` container (no host openssl needed); SANs cover
   `OS2DISPLAY_SERVER_DOMAIN`, `SERVER_DOMAIN`, `localhost`, and `127.0.0.1`, defaulting to
   `*.localhost` when env files haven't been bootstrapped. `FORCE=1` to overwrite. Cookbook
   recipe: "How do I run the stack on localhost without a public domain?".
+- `task install` auto-generates random MariaDB credentials. `.env.mariadb.example` now ships
+  `MARIADB_PASSWORD=CHANGE_ME` / `MARIADB_ROOT_PASSWORD=CHANGE_ME` sentinels. The new
+  `scripts/install-secrets.sh` runs as the first step of `task install`, detects the
+  sentinels, replaces them with random 32-character hex values, and syncs the application-user
+  password into `DATABASE_URL` in `.env.symfony`. Operators who set explicit values before
+  running install have them preserved. Removes one manual edit from the install recipe.
+- `task env:traefik` now prompts for cert provider (letsencrypt vs cert-file) and writes the
+  matching `SERVER_CERT_PROVIDER`, `SERVER_CUSTOM_CERT_FILE`, and `SERVER_CUSTOM_KEY_FILE`
+  values. The htpasswd hash is generated via `alpine/openssl passwd -apr1 -stdin` rather than
+  a host `htpasswd` binary, dropping the `apache2-utils` / `httpd-tools` dependency. Operators
+  on a fresh Debian/Alpine host now need only `task` and `docker` — no host openssl, no
+  apache utils.
 
 ### Changed (breaking)
 
@@ -79,10 +94,10 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
   | File           | Service env                   | Canonical example                                              |
   | -------------- | ----------------------------- | -------------------------------------------------------------- |
   | `.env.symfony` | os2display Symfony app config | image-extracted via `task env:init`                            |
-  | `.env.php`     | os2display PHP-FPM runtime    | `.env.php.production.example`                                  |
-  | `.env.nginx`   | nginx-api runtime             | `.env.nginx.production.example`                                |
-  | `.env.mariadb` | mariadb credentials           | `.env.mariadb.production.example`                              |
-  | `.env.traefik` | traefik config                | `.env.traefik.production.example` (renamed from `.env.traefik.example`) |
+  | `.env.php`     | os2display PHP-FPM runtime    | `.env.php.example`                                  |
+  | `.env.nginx`   | nginx-api runtime             | `.env.nginx.example`                                |
+  | `.env.mariadb` | mariadb credentials           | `.env.mariadb.example`                              |
+  | `.env.traefik` | traefik config                | `.env.traefik.example`                              |
   | `.env`         | compose orchestration         | `.env.example` (shrunk)                                        |
 
   Each compose service reads its own `env_file:` list. No cross-service env
@@ -90,7 +105,7 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
   and `mariadb` are gone. `task env:init` produces `.env.symfony` (was
   `.env.local`); `task env:diff` and `task env:migrate` updated to match.
   `task install`'s `_env_files` dep auto-creates any missing per-service env
-  file from its `.production.example` template.
+  file from its `.example` template.
 
 ### Fixed
 
@@ -169,7 +184,7 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
   sharing. Operators include it via `COMPOSE_FILE=docker-compose.yml:compose.shared-frontend.yml`
   in `.env`; that flips the network back to `external: true` so multiple compose projects can
   attach to one shared engine network.
-- Removed `SERVER_FRONTEND_NETWORK` from `.env.traefik.production.example`. The corresponding
+- Removed `SERVER_FRONTEND_NETWORK` from `.env.traefik.example`. The corresponding
   substitution on `traefik.networks` is gone.
 
 ### Changed (operator surface) — Taskfile conventions
@@ -246,7 +261,7 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
 - `docker-compose.yml`: bind mounts `./jwt:/app/config/jwt:rw` and `./media:/app/public/media:rw`
   on the `os2display` and `nginx-api` services (was `/var/www/html/...`).
 - `task env:init` and `task env:diff`: read `/app/.env` from the image (was `/var/www/html/.env`).
-- `.env.nginx.production.example`: `NGINX_WEB_ROOT` documented default `/app/public`
+- `.env.nginx.example`: `NGINX_WEB_ROOT` documented default `/app/public`
   (was `/var/www/html/public`).
 - README + CHANGELOG path references updated.
 
@@ -268,7 +283,7 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
   compose profile gating only applies to services, `NGINX_MAX_BODY_SIZE` ≥
   `PHP_UPLOAD_MAX_FILESIZE`, `mysql_native_password` deprecation horizon, Docker Hub
   anonymous rate limits, external `frontend` network manual creation, auto-loaded
-  `compose.override.yml`, editing committed `.production.example` templates.
+  `compose.override.yml`, editing committed `.example` templates.
 - New **Design principles** section articulating the two repo-level constraints we work
   under: only Task and docker compose required locally; build on stack standards (don't
   reinvent features compose / Task / the upstream image already provide).

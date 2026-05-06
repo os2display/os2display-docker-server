@@ -23,6 +23,7 @@ tasks:
       - bootstrap-env-files
     cmds:
       - echo "Installing"
+      - ./scripts/install-secrets.sh
       - "{{.COMPOSE}} pull"
       - "{{.COMPOSE}} up --force-recreate --detach --remove-orphans"
       - echo "Waiting for database to be ready"
@@ -190,21 +191,13 @@ tasks:
   # -- Env-file bootstrap & tooling -------------------------------------------
 
   env:init:
-    desc: Bootstrap .env.symfony from the API image
-    preconditions:
-      - sh: "[ -f .env ]"
-        msg: ".env missing — copy .env.example to .env first."
-      - sh: '! [ -f .env.symfony ] || [ "${FORCE:-0}" = "1" ]'
-        msg: ".env.symfony already exists. Use 'task env:diff' to compare, or set FORCE=1 to overwrite."
+    desc: |
+      Bootstrap .env.symfony from the API image. Auto-generates random
+      APP_SECRET + JWT_PASSPHRASE and bumps DATABASE_URL serverVersion to
+      match the mariadb image pinned in docker-compose.yml. FORCE=1 to
+      overwrite an existing .env.symfony.
     cmds:
-      - |
-        VERSION=$(grep ^OS2DISPLAY_VERSION_API= .env | cut -d= -f2)
-        IMAGE="ghcr.io/os2display/display-api-service:${VERSION}"
-        docker pull "$IMAGE"
-        docker run --rm --entrypoint sh "$IMAGE" -c 'cat /app/.env' > .env.symfony
-        echo ".env.symfony created from $IMAGE."
-        echo "Edit it to set APP_SECRET, JWT_PASSPHRASE, DATABASE_URL, plus any ADMIN_* / CLIENT_* / OIDC_* overrides."
-        echo "Then run 'task install'."
+      - ./scripts/env-init.sh
 
   env:diff:
     desc: Compare .env.symfony against the example shipped in the current API image
@@ -243,7 +236,7 @@ tasks:
         echo ""
         echo "Note: this only contains Symfony app config. PHP_*, NGINX_*, MARIADB_*"
         echo "values from your old .env.docker.local belong in .env.php, .env.nginx,"
-        echo "and .env.mariadb respectively — copy from the .production.example files"
+        echo "and .env.mariadb respectively — copy from the .example files"
         echo "and edit per your deployment."
 
   env:traefik:
@@ -330,7 +323,7 @@ tasks:
       - sh: "[ -f .env ]"
         msg: ".env missing — copy .env.example to .env first."
       - sh: "[ -f .env.mariadb ]"
-        msg: ".env.mariadb missing — copy .env.mariadb.production.example to .env.mariadb first."
+        msg: ".env.mariadb missing — copy .env.mariadb.example to .env.mariadb first."
     cmds:
       - mkdir -p backup
       - |
@@ -352,7 +345,7 @@ tasks:
     desc: Run mariadb-upgrade against the bundled MariaDB (idempotent; run after a major version bump)
     preconditions:
       - sh: "[ -f .env.mariadb ]"
-        msg: ".env.mariadb missing — copy .env.mariadb.production.example to .env.mariadb first."
+        msg: ".env.mariadb missing — copy .env.mariadb.example to .env.mariadb first."
     cmds:
       - |
         ROOT_PASSWORD=$(grep ^MARIADB_ROOT_PASSWORD= .env.mariadb | cut -d= -f2-)
@@ -429,12 +422,12 @@ tasks:
     internal: true
     cmds:
       - |
-        # Per-service env files bootstrap from their canonical .production.example
+        # Per-service env files bootstrap from their canonical .example
         # template if not yet edited by the operator. .env.symfony is image-
         # bootstrapped by `task env:init` and is not auto-created here.
         for svc in php nginx mariadb traefik; do
           if [ ! -f ".env.$svc" ]; then
-            echo ".env.$svc does not exist. Copying .env.$svc.production.example to .env.$svc..."
-            cp ".env.$svc.production.example" ".env.$svc"
+            echo ".env.$svc does not exist. Copying .env.$svc.example to .env.$svc..."
+            cp ".env.$svc.example" ".env.$svc"
           fi
         done

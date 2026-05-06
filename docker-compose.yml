@@ -37,7 +37,7 @@ services:
     # CLIENT_*, ...) lives in .env.symfony — bootstrapped from the API image's
     # /app/.env via `task env:init`.
     # PHP-FPM runtime tuning lives in .env.php — copy from
-    # .env.php.production.example.
+    # .env.php.example.
     env_file:
       - path: .env.symfony
         required: true
@@ -61,7 +61,7 @@ services:
       - app
       - frontend
     # NGINX_* runtime tunables in .env.nginx — copy from
-    # .env.nginx.production.example. Image defaults suffice for most installs.
+    # .env.nginx.example. Image defaults suffice for most installs.
     env_file:
       - path: .env.nginx
         required: true
@@ -113,7 +113,7 @@ services:
     networks:
       - app
     # MariaDB credentials (must match DATABASE_URL in .env.symfony) live in
-    # .env.mariadb — copy from .env.mariadb.production.example.
+    # .env.mariadb — copy from .env.mariadb.example.
     env_file:
       - path: .env.mariadb
         required: true

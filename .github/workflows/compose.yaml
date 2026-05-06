@@ -4,9 +4,9 @@
 ###
 ###   1. `compose-config`     The compose file synthesises with the example
 ###                            env files (`.env.example`,
-###                            `.env.traefik.production.example`, stub
+###                            `.env.traefik.example`, stub
 ###                            `.env.symfony`, and the per-service
-###                            `.env.{php,nginx,mariadb}.production.example`).
+###                            `.env.{php,nginx,mariadb}.example`).
 ###                            Catches typos and dangling `${VAR}` references.
 ###
 ###   2. `image-availability`  Every pinned image exists on its registry.
@@ -16,7 +16,7 @@
 ###   3. `env-coverage`        Every `${VAR}` reference in `docker-compose.yml`
 ###                            without a `:-default` is declared in
 ###                            `.env.example` or
-###                            `.env.traefik.production.example`. Catches
+###                            `.env.traefik.example`. Catches
 ###                            silent-empty substitutions.
 
 name: Compose
@@ -38,10 +38,10 @@ jobs:
       - name: Stage example env files for synthesis
         run: |
           cp .env.example .env
-          cp .env.traefik.production.example .env.traefik
-          cp .env.php.production.example .env.php
-          cp .env.nginx.production.example .env.nginx
-          cp .env.mariadb.production.example .env.mariadb
+          cp .env.traefik.example .env.traefik
+          cp .env.php.example .env.php
+          cp .env.nginx.example .env.nginx
+          cp .env.mariadb.example .env.mariadb
           touch .env.symfony
 
       - name: Validate docker compose config
@@ -91,7 +91,7 @@ jobs:
           # Names declared in any committed example
           {
             grep -hE '^[A-Z_][A-Z0-9_]*=' .env.example
-            grep -hE '^[A-Z_][A-Z0-9_]*=' .env.traefik.production.example
+            grep -hE '^[A-Z_][A-Z0-9_]*=' .env.traefik.example
           } | cut -d= -f1 | sort -u > /tmp/defined.txt
 
           # Names referenced bare but never declared
@@ -100,7 +100,7 @@ jobs:
             echo "::error::Undefined env vars referenced in docker-compose.yml:"
             echo "$missing"
             echo
-            echo "Declare them in .env.example or .env.traefik.production.example, or use \${VAR:-default} in compose."
+            echo "Declare them in .env.example or .env.traefik.example, or use \${VAR:-default} in compose."
             exit 1
           fi
           echo "All bare \${VAR} references are accounted for."
