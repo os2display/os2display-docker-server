@@ -40,7 +40,9 @@ no build step, no shell-script glue beyond the Taskfile.
 **Host.**
 
 - **Production deploy target: Linux.** All testing assumes a Linux deploy host; BSDs untested.
-  `task db:backup` uses `mariadb-dump` from the Linux mariadb image.
+  No host-side build, language toolchain, or DB-client dependencies — every script invocation
+  routes through a transient docker container (`alpine/openssl`, `alpine`, the bundled
+  mariadb image, etc.). `task db:backup` runs `mariadb-dump` *inside* the mariadb container.
 - **Local dev: Linux, macOS, Windows-WSL2.** All Taskfile-driven workflows (`task env:init`,
   `task env:traefik`, `task dev:cert`, `task install`, `task host:resources`, etc.) run their
   shell logic inside transient docker containers, so they're cross-platform on any host with a
@@ -83,28 +85,26 @@ no build step, no shell-script glue beyond the Taskfile.
 git clone git@github.com:os2display/os2display-docker-server.git
 cd os2display-docker-server
 
-# 1. Compose orchestration: project name, domain, image versions, profile selection.
-cp .env.example .env
-$EDITOR .env
-
-# 2. Symfony app config: pull the annotated example from the API image,
-#    then edit. APP_SECRET, JWT_PASSPHRASE, DATABASE_URL are required.
+# 1. Bootstrap every env file in one go: prompts for the public domain,
+#    copies per-service templates, extracts .env.symfony from the API
+#    image, auto-generates random APP_SECRET + JWT_PASSPHRASE, and bumps
+#    DATABASE_URL serverVersion to match the bundled mariadb pin.
 task env:init
-$EDITOR .env.symfony
 
-# 3. Per-service runtime config. task install will auto-create any you skip.
-cp .env.php.example     .env.php
-cp .env.nginx.example   .env.nginx
-cp .env.mariadb.example .env.mariadb     # only if running bundled mariadb
-$EDITOR .env.php .env.mariadb                        # set production credentials, tune as needed
-
-# 4. Traefik dashboard auth + Let's Encrypt email (interactive prompts).
+# 2. Traefik dashboard auth + (for letsencrypt) Let's Encrypt email,
+#    or (for cert-file) custom cert filenames. Interactive prompts.
 task env:traefik
 
-# 5. Bring the stack up: pulls images, runs migrations, prompts for
-#    initial tenant + admin user, installs bundled templates.
+# 3. Bring the stack up: auto-fills any CHANGE_ME mariadb sentinels,
+#    pulls images, runs migrations, prompts for initial tenant + admin
+#    user, installs bundled templates.
 task install
 ```
+
+Edit `.env.symfony` afterwards for any `ADMIN_*`, `CLIENT_*`, `OIDC_*`,
+or `DATABASE_URL` overrides; `task env:diff` highlights what the image
+ships vs what you've changed. See [Configuration files](#configuration-files)
+for the full per-service surface.
 
 After `task install` returns, the API + bundled admin UI + screen client are reachable at
 `https://<your-domain>/`, `/admin/`, `/client/`. The Traefik dashboard is at
@@ -112,21 +112,36 @@ After `task install` returns, the API + bundled admin UI + screen client are rea
 
 ### Configuration files
 
-Each service reads its own env file. The checked-in `.example` files are the canonical
+Each service reads its own env file. The checked-in `.env.<X>.example` files are the canonical
 templates; edit your local copy, never the committed one.
+
+**Three project-wide conventions** that hold across every env file:
+
+1. **Sane production defaults.** The shipped examples produce a working production stack
+   without operator-edit-everywhere ceremony. Values that *can* default safely (PHP memory
+   limits, OPcache settings, nginx body sizes, log retention, TLS profile) are tuned for a
+   medium-load production deploy. Values that *must* be operator-supplied (API domain,
+   dashboard auth, MariaDB passwords) are sentinels that fail-loud or prompt: `task env:init`
+   prompts for the domain and auto-generates `APP_SECRET` / `JWT_PASSPHRASE`; `task install`
+   refuses to start while `MARIADB_*=CHANGE_ME` or `SERVER_DASHBOARD_AUTH=CHANGE_ME` sentinels
+   remain (mariadb auto-fills with random hex; dashboard auth must be set via `task env:traefik`).
+2. **All configuration options are documented in the `.env.<X>.example` files.** The examples
+   are the canonical reference — if a knob exists, it's there with a comment explaining what
+   it does and what value space it accepts. There's no separate "advanced configuration"
+   surface elsewhere.
+3. **`env_file:` (not compose `environment:`) per service** — see
+   [Design principles](#design-principles) for the rationale. Each service's `env_file:` list
+   is what isolates its config; compose-level `environment:` blocks would shadow `env_file:`
+   values silently and were removed in v3.
 
 | File | Service | Purpose | Bootstrap |
 |---|---|---|---|
-| `.env` | (compose) | Compose orchestration: project name, profile, image versions, server domain. Read by `docker compose` for substitution into the YAML before parsing. | `cp .env.example .env` |
-| `.env.symfony` | os2display | Symfony app config — `APP_SECRET`, `DATABASE_URL`, `JWT_*`, `INTERNAL_OIDC_*`, `EXTERNAL_OIDC_*`, `ADMIN_*`, `CLIENT_*`, calendar feed, etc. | `task env:init` (extracts `/app/.env` from the API image — the upstream-canonical source) |
-| `.env.php` | os2display | PHP-FPM runtime tuning — `PHP_MEMORY_LIMIT`, `PHP_OPCACHE_*`, `PHP_PM_*`. | `cp .env.php.example .env.php` |
-| `.env.nginx` | nginx-api | Nginx runtime tuning — `NGINX_MAX_BODY_SIZE`, etc. | `cp .env.nginx.example .env.nginx` |
-| `.env.mariadb` | mariadb | MariaDB credentials. Must match the `DATABASE_URL` user + password + database in `.env.symfony`. | `cp .env.mariadb.example .env.mariadb` |
-| `.env.traefik` | traefik | Dashboard auth, Let's Encrypt email, cert provider. | `task env:traefik` (interactive) or copy from `.env.traefik.example` |
-
-Why this split: each service's compose block has its own `env_file:` referring to one or two of
-these files. Vars don't leak across services, the compose file has no translation blocks, and
-the operator surface is one file per concern. See [Design principles](#design-principles).
+| `.env` | (compose) | Compose orchestration: project name, profile, image versions, server domain. Read by `docker compose` for substitution into the YAML before parsing. | `task env:init` (prompts for domain) |
+| `.env.symfony` | os2display | Symfony app config — `APP_SECRET`, `DATABASE_URL`, `JWT_*`, `INTERNAL_OIDC_*`, `EXTERNAL_OIDC_*`, `ADMIN_*`, `CLIENT_*`, calendar feed, etc. | `task env:init` (extracts `/app/.env` from the API image — the upstream-canonical source — auto-generates secrets, bumps `serverVersion`) |
+| `.env.php` | os2display | PHP-FPM runtime tuning — `PHP_MEMORY_LIMIT`, `PHP_OPCACHE_*`, `PHP_PM_*`. | `task env:init` (copies template) |
+| `.env.nginx` | nginx-api | Nginx runtime tuning — `NGINX_MAX_BODY_SIZE`, etc. | `task env:init` (copies template) |
+| `.env.mariadb` | mariadb | MariaDB credentials. `task install` auto-fills `CHANGE_ME` sentinels with random hex and syncs `DATABASE_URL`. | `task env:init` (copies template) |
+| `.env.traefik` | traefik | Cert provider, dashboard auth (htpasswd), domain, Let's Encrypt email. | `task env:traefik` (interactive) |
 
 `task env:diff` compares your `.env.symfony` against the example shipped in the currently-pinned
 API image — useful when bumping `OS2DISPLAY_VERSION_API` to spot new keys upstream added.
@@ -165,6 +180,31 @@ Three docker networks:
   bridge to the host.
 
 ### Cookbook
+
+- [How do I install fresh?](#how-do-i-install-fresh)
+- [How do I upgrade the os2display api + nginx images?](#how-do-i-upgrade-the-os2display-api--nginx-images)
+- [How do I upgrade the bundled MariaDB across a major version?](#how-do-i-upgrade-the-bundled-mariadb-across-a-major-version)
+- [How do I switch from Let's Encrypt to a custom certificate?](#how-do-i-switch-from-lets-encrypt-to-a-custom-certificate)
+- [How do I run the stack on localhost without a public domain?](#how-do-i-run-the-stack-on-localhost-without-a-public-domain)
+- [How do I run with an external database?](#how-do-i-run-with-an-external-database)
+- [How do I run with an external Traefik?](#how-do-i-run-with-an-external-traefik)
+- [How do I share Traefik with another compose project?](#how-do-i-share-traefik-with-another-compose-project)
+- [How do I tune PHP for big imports or long requests?](#how-do-i-tune-php-for-big-imports-or-long-requests)
+- [How do I tune nginx for large uploads?](#how-do-i-tune-nginx-for-large-uploads)
+- [How do I take a database backup?](#how-do-i-take-a-database-backup)
+- [How do I restore from a backup?](#how-do-i-restore-from-a-backup)
+- [How do I add a tenant?](#how-do-i-add-a-tenant)
+- [How do I add a user?](#how-do-i-add-a-user)
+- [How do I install or update bundled templates?](#how-do-i-install-or-update-bundled-templates)
+- [How do I authenticate to Docker Hub (rate limits)?](#how-do-i-authenticate-to-docker-hub-rate-limits)
+- [How do I authenticate to GHCR?](#how-do-i-authenticate-to-ghcr)
+- [How do I clear the application cache?](#how-do-i-clear-the-application-cache)
+- [How do I set resource limits for a dedicated host?](#how-do-i-set-resource-limits-for-a-dedicated-host)
+- [How do I tune PHP-FPM for the os2display container's memory limit?](#how-do-i-tune-php-fpm-for-the-os2display-containers-memory-limit)
+- [How do I see overall disk usage of the stack?](#how-do-i-see-overall-disk-usage-of-the-stack)
+- [How do I see media disk usage per tenant?](#how-do-i-see-media-disk-usage-per-tenant)
+- [How do I tail and triage logs?](#how-do-i-tail-and-triage-logs)
+- [How do I see docker log disk usage and tune retention?](#how-do-i-see-docker-log-disk-usage-and-tune-retention)
 
 #### How do I install fresh?
 
@@ -425,17 +465,6 @@ echo "$GHCR_PAT" | docker login ghcr.io -u "$GITHUB_USERNAME" --password-stdin
 gh auth token | docker login ghcr.io -u "$(gh api user -q .login)" --password-stdin
 ```
 
-#### How do I read service logs?
-
-```bash
-task logs                            # follow all services, last 50 lines
-docker compose logs -f os2display    # one service
-docker compose logs --since 1h       # bounded by time
-```
-
-All services log to docker's `json-file` driver with rotation: max 10 MB per file, 3 files per
-service. A runaway container can't fill the host disk.
-
 #### How do I clear the application cache?
 
 ```bash
@@ -571,88 +600,132 @@ mount, since docker's json log files are root-owned on the host. Linux only.
 A grab-bag of operator gotchas the stack documents but doesn't (and in some cases can't)
 prevent.
 
-**Cert-file: cert must cover every served host.** When `SERVER_CERT_PROVIDER=cert-file`,
-Traefik selects certs by SNI from the file provider. Your cert must include both
-`OS2DISPLAY_SERVER_DOMAIN` (api + admin + client) **and** `SERVER_DOMAIN` (Traefik dashboard) as
-SAN entries — or use a wildcard. Without one, the dashboard host gets the file provider's
-default cert (the first one declared), which won't match → browser TLS errors. Let's Encrypt
-mode handles this automatically (per-host issuance).
+- [TLS: cert-file requires a multi-host SAN](#tls-cert-file-requires-a-multi-host-san)
+- [Upgrades are not reversible by tag revert](#upgrades-are-not-reversible-by-tag-revert)
+- [Doctrine `serverVersion` drives SQL dialect selection](#doctrine-serverversion-drives-sql-dialect-selection)
+- [MariaDB / Symfony credential parity](#mariadb--symfony-credential-parity)
+- [`./media` permissions: the dual-UID contract](#media-permissions-the-dual-uid-contract)
+- [OPcache mtime checking off in production](#opcache-mtime-checking-off-in-production)
+- [Let's Encrypt rate limits (50/domain/week)](#lets-encrypt-rate-limits-50domainweek)
+- [`purge` and `reinstall` delete data](#purge-and-reinstall-delete-data)
+- [`env:init FORCE=1` overwrites without prompt](#envinit-force1-overwrites-without-prompt)
+- [Compose profiles gate services, not volumes](#compose-profiles-gate-services-not-volumes)
+- [Body-size parity between nginx and PHP](#body-size-parity-between-nginx-and-php)
+- [`mysql_native_password` is deprecated upstream](#mysql_native_password-is-deprecated-upstream)
+- [Docker Hub anonymous pull cap](#docker-hub-anonymous-pull-cap)
+- [External `frontend` network must exist before `task install`](#external-frontend-network-must-exist-before-task-install)
+- [`compose.override.yml` is silently auto-loaded](#composeoverrideyml-is-silently-auto-loaded)
+- [Committed `.example` files are templates, not your config](#committed-example-files-are-templates-not-your-config)
 
-**`task update` is not reversible by reverting the image tag.** `app:update` applies the new
-image's Doctrine schema migrations. Some migrations include `DROP COLUMN`, type changes, or
-data transforms that the previous image's `app:update` doesn't undo (and that Doctrine's
-`down()` method, if defined, may not lossly reverse). The on-disk data files are preserved
-across the image swap and container recreation, but the *schema* gets rewritten. Rolling back
-is `task db:backup`-restore + revert image tag — not a clean tag revert. **Always take a
-fresh `task db:backup` before `task update`**, not just relying on yesterday's snapshot.
+#### TLS: cert-file requires a multi-host SAN
 
-**Doctrine `serverVersion` mismatch produces wrong SQL.** `DATABASE_URL` in `.env.symfony` has
-a `serverVersion=` parameter that Doctrine reads to pick its SQL dialect. After a MariaDB
-major bump, this *must* be updated; otherwise queries silently use the wrong dialect (most
-visible on JSON columns and date/time functions). The mismatch doesn't error at startup —
-queries fail at runtime in production traffic.
+When `SERVER_CERT_PROVIDER=cert-file`, Traefik selects certs by SNI from the file provider.
+Your cert must include both `OS2DISPLAY_SERVER_DOMAIN` (api + admin + client) **and**
+`SERVER_DOMAIN` (Traefik dashboard) as SAN entries — or use a wildcard. Without one, the
+dashboard host gets the file provider's default cert (the first one declared), which won't
+match → browser TLS errors. Let's Encrypt mode handles this automatically (per-host issuance).
 
-**`.env.mariadb` and `.env.symfony` credentials must match.** The bundled mariadb container
-initialises with credentials from `.env.mariadb`; Doctrine connects with credentials from
-`.env.symfony`'s `DATABASE_URL`. Edit one without the other and the api can't connect. After
-the data dir is initialised, mariadb refuses to re-initialise with different credentials —
-changing them later requires a manual `ALTER USER` SQL run inside the container.
+#### Upgrades are not reversible by tag revert
 
-**`./media` permissions.** The os2display container writes media as UID 1042 (deploy); the
-nginx container reads them as UID 101 (nginx-unprivileged). `./media` must be readable by
-both. The simplest fix is owning `./media` as group 1042 with mode 750 + `chmod g+rx ./media`.
-Symptoms of getting it wrong: thumbnails 404, uploaded images don't render. Always check
-`./media` perms first when troubleshooting media issues.
+`task update` runs `app:update` which applies the new image's Doctrine schema migrations.
+Some migrations include `DROP COLUMN`, type changes, or data transforms that the previous
+image's `app:update` doesn't undo (and that Doctrine's `down()` method, if defined, may not
+lossly reverse). The on-disk data files are preserved across the image swap and container
+recreation, but the *schema* gets rewritten. Rolling back is `task db:backup`-restore +
+revert image tag — not a clean tag revert. **Always take a fresh `task db:backup` before
+`task update`**, not just relying on yesterday's snapshot.
 
-**`PHP_OPCACHE_VALIDATE_TIMESTAMPS=0` in production.** `=1` makes opcache check file mtime on
-every request — fine in development for live reloads, terrible in production for performance.
-The `.env.php.example` defaults to `=0`. If you copied it to `.env.php` and edited
-to `=1`, expect significant CPU + I/O overhead.
+#### Doctrine `serverVersion` drives SQL dialect selection
 
-**Let's Encrypt rate limits.** Production LE allows 50 certificate issuances per registered
-domain per week. Hitting it locks you out for 7 days. When iterating on Traefik config, point
-at the LE staging server first via
+`DATABASE_URL` in `.env.symfony` has a `serverVersion=` parameter that Doctrine reads to
+pick its SQL dialect. After a MariaDB major bump, this *must* be updated; otherwise queries
+silently use the wrong dialect (most visible on JSON columns and date/time functions). The
+mismatch doesn't error at startup — queries fail at runtime in production traffic.
+
+#### MariaDB / Symfony credential parity
+
+The bundled mariadb container initialises with credentials from `.env.mariadb`; Doctrine
+connects with credentials from `.env.symfony`'s `DATABASE_URL`. Edit one without the other
+and the api can't connect. After the data dir is initialised, mariadb refuses to
+re-initialise with different credentials — changing them later requires a manual
+`ALTER USER` SQL run inside the container.
+
+#### `./media` permissions: the dual-UID contract
+
+The os2display container writes media as UID 1042 (deploy); the nginx container reads them
+as UID 101 (nginx-unprivileged). `./media` must be readable by both. The simplest fix is
+owning `./media` as group 1042 with mode 750 + `chmod g+rx ./media`. Symptoms of getting it
+wrong: thumbnails 404, uploaded images don't render. Always check `./media` perms first when
+troubleshooting media issues.
+
+#### OPcache mtime checking off in production
+
+`PHP_OPCACHE_VALIDATE_TIMESTAMPS=1` makes opcache check file mtime on every request — fine in
+development for live reloads, terrible in production for performance. The `.env.php.example`
+defaults to `=0`. If you copied it to `.env.php` and edited to `=1`, expect significant CPU +
+I/O overhead.
+
+#### Let's Encrypt rate limits (50/domain/week)
+
+Production LE allows 50 certificate issuances per registered domain per week. Hitting it
+locks you out for 7 days. When iterating on Traefik config, point at the LE staging server
+first via
 `TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_CASERVER=https://acme-staging-v02.api.letsencrypt.org/directory`
 in `.env.traefik`. Switch to production only when the cert flow works end-to-end.
 
-**`task purge` and `task reinstall` delete data.** `purge` runs `docker compose down --volumes`
-— the mariadb data volume goes too. `reinstall` is `purge` + `install`. Both destroy the
-database. `down` and `stop` preserve volumes.
+#### `purge` and `reinstall` delete data
 
-**`task env:init` with `FORCE=1` overwrites `.env.symfony`.** Without `FORCE=1`, env:init
-refuses to run if `.env.symfony` already exists. With `FORCE=1`, it silently overwrites — your
-operator-edited secrets included. Always backup first.
+`task purge` runs `docker compose down --volumes` — the mariadb data volume goes too.
+`task reinstall` is `purge` + `install`. Both destroy the database. `down` and `stop`
+preserve volumes.
 
-**Compose profiles only gate services.** Networks, volumes, and top-level config don't accept
-`profiles:`. Switching `COMPOSE_PROFILES=traefik` doesn't tear down the bundled mariadb's data
-volume — a previous `mariadb` run leaves data on disk that's idle until the profile's
-re-enabled. `task purge` is the only path to actually delete it.
+#### `env:init FORCE=1` overwrites without prompt
 
-**`NGINX_MAX_BODY_SIZE` ≥ `PHP_UPLOAD_MAX_FILESIZE`.** Nginx rejects oversized requests at the
-proxy edge; PHP at the parser. If nginx is lower, large uploads get truncated before PHP sees
-them — the operator sees a 413 from nginx, not a clean PHP error.
+Without `FORCE=1`, env:init refuses to run if `.env.symfony` already exists. With `FORCE=1`,
+it silently overwrites — your operator-edited secrets included. Always backup first.
 
-**`mysql_native_password` deprecation.** MariaDB 11.4 still ships it (and the official image
-defaults to it), but the auth plugin is flagged for removal. Operators on default auth will
-hit a hard break on 11.5+. Plan to migrate to `caching_sha2_password` before that bump.
+#### Compose profiles gate services, not volumes
 
-**Anonymous Docker Hub rate limit.** 100 pulls / 6h / IP. NAT'd hosts share the cap with every
-other anonymous puller behind the same egress. `docker login docker.io` lifts to 200/6h/user;
-a registry mirror lifts further. See
-[Cookbook: authenticate to Docker Hub](#how-do-i-authenticate-to-docker-hub-rate-limits).
+Compose `profiles:` only gate which **services** start. Networks, volumes, and top-level
+config don't accept `profiles:`. Switching `COMPOSE_PROFILES=traefik` doesn't tear down the
+bundled mariadb's data volume — a previous `mariadb` run leaves data on disk that's idle
+until the profile is re-enabled. `task purge` is the only path to actually delete it.
 
-**External `frontend` network requires manual creation.** When using
-`compose.shared-frontend.yml`, the network is `external: true`. Compose won't create it. Run
-`docker network create <name>` once on the host before `task install`.
+#### Body-size parity between nginx and PHP
 
-**`compose.override.yml` is auto-loaded by compose.** If you have a leftover `compose.override.yml`
-from a 2.x deployment or experiment, it will silently apply on top of `docker-compose.yml`.
-Inspect with `docker compose config | grep -A 5 <suspicious-service>` to see the merged result.
+`NGINX_MAX_BODY_SIZE` must be ≥ `PHP_UPLOAD_MAX_FILESIZE`. Nginx rejects oversized requests
+at the proxy edge; PHP at the parser. If nginx is lower, large uploads get truncated before
+PHP sees them — the operator sees a 413 from nginx, not a clean PHP error.
 
-**Don't edit the committed `.example` files for your operator config.** The
-production examples are checked-in templates; your operator edits go into `.env.<service>`
-(gitignored). Editing the templates means future `task install` invocations bootstrap your
-custom values into other operator's checkouts and `git status` is permanently dirty.
+#### `mysql_native_password` is deprecated upstream
+
+MariaDB 11.4 still ships it (and the official image defaults to it), but the auth plugin is
+flagged for removal. Operators on default auth will hit a hard break on 11.5+. Plan to
+migrate to `caching_sha2_password` before that bump.
+
+#### Docker Hub anonymous pull cap
+
+100 pulls / 6h / IP. NAT'd hosts share the cap with every other anonymous puller behind the
+same egress. `docker login docker.io` lifts to 200/6h/user; a registry mirror lifts further.
+See [Cookbook: authenticate to Docker Hub](#how-do-i-authenticate-to-docker-hub-rate-limits).
+
+#### External `frontend` network must exist before `task install`
+
+When using `compose.shared-frontend.yml`, the network is `external: true`. Compose won't
+create it. Run `docker network create <name>` once on the host before `task install`.
+
+#### `compose.override.yml` is silently auto-loaded
+
+If you have a leftover `compose.override.yml` from a 2.x deployment or experiment, it will
+silently apply on top of `docker-compose.yml`. Inspect with
+`docker compose config | grep -A 5 <suspicious-service>` to see the merged result.
+
+#### Committed `.example` files are templates, not your config
+
+The checked-in `.env.<X>.example` files are templates, intentionally producing safe-but-not-
+secret defaults. Your operator edits go into `.env.<service>` (gitignored). Editing the
+templates means future `task install` invocations bootstrap your custom values into other
+operators' checkouts, and `git status` is permanently dirty.
 
 ### Migrating from an older release
 
@@ -712,6 +785,11 @@ The repo is a thin wrapper around upstream tooling. The constraints we work unde
    `OS2DISPLAY_*` prefix to avoid shadowing names docker compose itself reads (only
    `COMPOSE_PROJECT_NAME` and `COMPOSE_PROFILES` retain the `COMPOSE_` prefix because they're
    compose-native).
+
+8. **Follow the official [Taskfile style guide](https://taskfile.dev/styleguide/).** Section
+   ordering (`version` → `vars` → `tasks`), 2-space indent, kebab-case task names, `:`-namespacing
+   for groups (`env:*`, `host:*`, `logs:*`, `dev:*`), and external `scripts/*.sh` for any task
+   body that can't fit on one line. The shellcheck CI workflow lints the extracted scripts.
 
 ### Local development
 
