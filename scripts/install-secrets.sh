@@ -18,8 +18,19 @@ if [ ! -f .env.mariadb ] || [ ! -f .env.symfony ]; then
   exit 1
 fi
 
-# Sentinel detection via env vars (loaded by Taskfile's `dotenv:` directive).
-# If neither password is the CHANGE_ME placeholder, there's nothing to do.
+# Source .env.mariadb so $MARIADB_PASSWORD etc. are set whether the
+# script runs via `task install` (Taskfile's `dotenv:` already loaded it)
+# or stand-alone (CI workflow, manual invocation). Without this, an empty
+# env defeats the sentinel check below — both `${VAR:-}` evaluate to
+# empty (≠ "CHANGE_ME"), so the script silently exits 0 and mariadb
+# starts with the literal CHANGE_ME password from the file.
+set -a
+# shellcheck disable=SC1091
+. ./.env.mariadb
+set +a
+
+# Sentinel detection. If neither password is the CHANGE_ME placeholder,
+# there's nothing to do.
 if [ "${MARIADB_PASSWORD:-}" != "CHANGE_ME" ] && [ "${MARIADB_ROOT_PASSWORD:-}" != "CHANGE_ME" ]; then
   exit 0
 fi
