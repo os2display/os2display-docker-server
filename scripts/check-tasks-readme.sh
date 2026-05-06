@@ -21,11 +21,22 @@ set -euo pipefail
 #
 # `default` is the meta-help task — what `task` (no args) runs. It's
 # documented separately in the README ("`task --list` shows…"); we don't
-# expect it in the per-section all-tasks table.
-LIST_TASKS=$(task --list 2>/dev/null \
-  | awk '/^\* / { sub(/^\* /, ""); sub(/[[:space:]]+.*$/, ""); sub(/:$/, ""); print }' \
-  | grep -v '^default$' \
+# expect it in the per-section all-tasks table. The filter is folded into
+# the awk pass (not a downstream `grep -v`) so an empty parse doesn't
+# pipefail-cascade into a silent script exit.
+if ! LIST_RAW=$(task --list 2>&1); then
+  echo "Error: 'task --list' failed. Output:" >&2
+  printf '%s\n' "$LIST_RAW" | sed 's/^/  /' >&2
+  exit 1
+fi
+LIST_TASKS=$(printf '%s\n' "$LIST_RAW" \
+  | awk '/^\* / { sub(/^\* /, ""); sub(/[[:space:]]+.*$/, ""); sub(/:$/, ""); if ($0 != "default") print }' \
   | sort -u)
+if [ -z "$LIST_TASKS" ]; then
+  echo "Error: parsed no task names from 'task --list' output. Raw output:" >&2
+  printf '%s\n' "$LIST_RAW" | head -30 | sed 's/^/  /' >&2
+  exit 1
+fi
 
 # Tasks the README all-tasks block lists. Format inside the ```text fence:
 #   <section>           (no leading whitespace)
