@@ -24,7 +24,11 @@ set -euo pipefail
 # expect it in the per-section all-tasks table. The filter is folded into
 # the awk pass (not a downstream `grep -v`) so an empty parse doesn't
 # pipefail-cascade into a silent script exit.
-if ! LIST_RAW=$(task --list 2>&1); then
+# `NO_COLOR=1` (de-facto standard, https://no-color.org/) disables Task's
+# ANSI escapes. CI runners — at least GitHub Actions — appear to set
+# something that flips Task into colored-output mode even when stdout
+# isn't a TTY, which broke the `^\* ` parse before this fix.
+if ! LIST_RAW=$(NO_COLOR=1 task --list 2>&1); then
   echo "Error: 'task --list' failed. Output:" >&2
   printf '%s\n' "$LIST_RAW" | sed 's/^/  /' >&2
   exit 1
