@@ -127,57 +127,7 @@ tasks:
       (the json-file logs at /var/lib/docker are root-owned, so reads happen
       via a transient alpine container with a read-only mount).
     cmds:
-      - |
-        if [ ! -d /var/lib/docker ]; then
-          echo "Error: /var/lib/docker not found. logs:disk requires a Linux host." >&2
-          exit 1
-        fi
-
-        ids=$({{.COMPOSE}} ps -aq 2>/dev/null)
-        if [ -z "$ids" ]; then
-          echo "No containers in this project — bring the stack up first."
-          exit 0
-        fi
-
-        # Per-container manifest (name|log-base-path), one line each. The
-        # base path is e.g. /var/lib/docker/containers/<id>/<id>-json.log;
-        # rotated siblings (.1, .2, ...) live next to it.
-        manifest=$(for id in $ids; do
-          name=$(docker inspect --format='{{`{{.Name}}`}}' "$id" | sed 's|^/||')
-          path=$(docker inspect --format='{{`{{.LogPath}}`}}' "$id")
-          [ -n "$path" ] && printf '%s|%s\n' "$name" "$path"
-        done)
-
-        # alpine container does the du since /var/lib/docker is root-owned.
-        printf '%s\n' "$manifest" | docker run --rm -i \
-          -v /var/lib/docker:/var/lib/docker:ro \
-          alpine sh -c '
-            printf "%-30s %12s\n" "CONTAINER" "LOG SIZE"
-            total_kb=0
-            while IFS="|" read -r name path; do
-              [ -z "$name" ] && continue
-              # du -ck on base + rotated siblings; tail picks the total row.
-              kb=$(du -ck "${path}"* 2>/dev/null | tail -1 | cut -f1)
-              kb=${kb:-0}
-              total_kb=$((total_kb + kb))
-              h=$(du -ch "${path}"* 2>/dev/null | tail -1 | cut -f1)
-              printf "  %-28s %12s\n" "$name" "${h:-—}"
-            done
-            printf "  %-28s %12s\n" "----" ""
-            # Integer-only formatting (busybox sh has no bc).
-            if [ "$total_kb" -lt 1024 ]; then tot="${total_kb}K"
-            elif [ "$total_kb" -lt 1048576 ]; then tot="$((total_kb / 1024))M"
-            else tot="$((total_kb / 1048576))G"
-            fi
-            printf "  %-28s %12s\n" "TOTAL" "$tot"
-          '
-
-        echo
-        MAX_SIZE=$(grep -E '^LOG_MAX_SIZE=' .env 2>/dev/null | cut -d= -f2-)
-        MAX_FILE=$(grep -E '^LOG_MAX_FILE=' .env 2>/dev/null | cut -d= -f2-)
-        printf "Retention: max-size=%s × max-file=%s per container\n" \
-          "${MAX_SIZE:-10m (default)}" "${MAX_FILE:-3 (default)}"
-        echo "Tune via LOG_MAX_SIZE / LOG_MAX_FILE in .env, then 'task update'."
+      - ./scripts/logs-disk.sh
 
   console:
     desc: "Run a Symfony bin/console command in the os2display container — e.g. `task console -- list`"
@@ -300,51 +250,7 @@ tasks:
     desc: Setup .env.traefik (domain, email, dashboard auth) — interactive
     aliases: [traefik_env]
     cmds:
-      - |
-        if [ ! -f .env.traefik ]; then
-          echo ".env.traefik does not exist. Copying .env.traefik.production.example to .env.traefik..."
-          cp .env.traefik.production.example .env.traefik
-        fi
-
-        # Ensure htpasswd is installed
-        if ! command -v htpasswd >/dev/null 2>&1; then
-          echo "Error: 'htpasswd' command not found."
-          echo "Please install it (usually from the 'apache2-utils' or 'httpd-tools' package) and try again."
-          exit 1
-        fi
-
-        echo ""
-        echo "Configure Traefik environment"
-        echo "===================================================="
-        printf "Enter server domain (e.g. example.com): "
-        read SERVER_DOMAIN
-        printf "Enter email for Let's Encrypt (e.g. admin@example.com): "
-        read TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL
-        printf "Enter Traefik dashboard/admin username: "
-        read SERVER_DASHBOARD_USERNAME
-        printf "Enter Traefik dashboard/admin password: "
-        read -s SERVER_DASHBOARD_PASSWORD
-
-        # Generate htpasswd entry (username:hash)
-        HTPASSWD_RAW=$(htpasswd -nb "${SERVER_DASHBOARD_USERNAME}" "${SERVER_DASHBOARD_PASSWORD}")
-
-        # Escape characters that break sed/env ($, /, &)
-        HTPASSWD_ESCAPED=$(printf '%s\n' "$HTPASSWD_RAW" \
-          | sed -e 's/[\/&]/\\&/g' -e 's/\$/\\$/g')
-
-        # Update variables in .env.traefik
-        sed -i "s/^SERVER_DOMAIN=.*/SERVER_DOMAIN=${SERVER_DOMAIN}/" .env.traefik
-        sed -i "s/^TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL=.*/TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL=${TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL}/" .env.traefik
-        sed -i "s/^SERVER_DASHBOARD_AUTH=.*/SERVER_DASHBOARD_AUTH=${HTPASSWD_ESCAPED}/" .env.traefik
-
-        echo "===================================================="
-        echo ".env.traefik has been updated."
-        echo "Domain:   ${SERVER_DOMAIN}"
-        echo "Email:    ${TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL}"
-        echo "User:     ${SERVER_DASHBOARD_USERNAME}"
-        echo "Password: (hidden)"
-        echo "Auth:     (htpasswd line stored in SERVER_DASHBOARD_AUTH)"
-        echo "===================================================="
+      - ./scripts/env-traefik.sh
 
   # -- Host inspection -------------------------------------------------------
 
@@ -355,69 +261,7 @@ tasks:
       compose.resource-limits.yml and opt in via COMPOSE_FILE in .env.
       Assumes a DEDICATED host — scale down for shared hosts.
     cmds:
-      - |
-        if [ ! -r /proc/meminfo ]; then
-          echo "Error: /proc/meminfo not readable. host:resources requires a Linux host." >&2
-          exit 1
-        fi
-        TOTAL_MEM_KB=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
-        TOTAL_MEM_MB=$((TOTAL_MEM_KB / 1024))
-        TOTAL_CPU=$(nproc)
-
-        # Fixed-size service ceilings (bounded workloads).
-        OS_RESERVE_MB=512
-        NGINX_API_MEM=128
-        REDIS_MEM=384       # > --maxmemory 256mb so the kernel OOM is the hard stop
-        TRAEFIK_MEM=256
-        SOCKET_PROXY_MEM=64
-
-        FIXED_TOTAL=$((OS_RESERVE_MB + NGINX_API_MEM + REDIS_MEM + TRAEFIK_MEM + SOCKET_PROXY_MEM))
-        DYNAMIC_MEM_MB=$((TOTAL_MEM_MB - FIXED_TOTAL))
-
-        if [ "$DYNAMIC_MEM_MB" -lt 1024 ]; then
-          echo "Error: host has ${TOTAL_MEM_MB} MiB RAM; not enough headroom after fixed-size service ceilings (${FIXED_TOTAL} MiB)." >&2
-          echo "       Need at least 1 GiB usable for the os2display + mariadb dynamic split (so >= 2.3 GiB total host RAM)." >&2
-          exit 1
-        fi
-
-        # Heuristic split (50% / 30% leaves ~20% slack).
-        OS2DISPLAY_MEM=$((DYNAMIC_MEM_MB * 50 / 100))
-        MARIADB_MEM=$((DYNAMIC_MEM_MB * 30 / 100))
-
-        # Header to stderr so stdout is pure YAML and capturable cleanly.
-        {
-          echo "Host: ${TOTAL_CPU} CPUs, ${TOTAL_MEM_MB} MiB RAM"
-          echo "Fixed-size ceilings (small services + OS):"
-          echo "  OS reserve:    ${OS_RESERVE_MB} MiB"
-          echo "  nginx-api:     ${NGINX_API_MEM} MiB"
-          echo "  redis:         ${REDIS_MEM} MiB  (above --maxmemory 256mb in-process limit)"
-          echo "  traefik:       ${TRAEFIK_MEM} MiB"
-          echo "  socket-proxy:  ${SOCKET_PROXY_MEM} MiB"
-          echo "Dynamic allocation (50% / 30%, ~20% slack):"
-          echo "  os2display:    ${OS2DISPLAY_MEM} MiB"
-          echo "  mariadb:       ${MARIADB_MEM} MiB"
-          echo
-          echo "Capture this output into compose.resource-limits.yml and enable in .env:"
-          echo "  COMPOSE_FILE=docker-compose.yml:compose.resource-limits.yml"
-        } >&2
-
-        cat <<EOF
-        # Compose override for resource limits — generated by \`task host:resources\`.
-        # Assumes a dedicated host; revise mem_limit values for shared hosts.
-        services:
-          os2display:
-            mem_limit: ${OS2DISPLAY_MEM}m
-          nginx-api:
-            mem_limit: ${NGINX_API_MEM}m
-          redis:
-            mem_limit: ${REDIS_MEM}m
-          mariadb:
-            mem_limit: ${MARIADB_MEM}m
-          traefik:
-            mem_limit: ${TRAEFIK_MEM}m
-          socket-proxy:
-            mem_limit: ${SOCKET_PROXY_MEM}m
-        EOF
+      - ./scripts/host-resources.sh
 
   host:php:
     desc: |
@@ -428,69 +272,7 @@ tasks:
           task host:php -- 4096      # large
       Output: a block of PHP_* env-var assignments to merge into .env.php.
     cmds:
-      - |
-        MEM_LIMIT_MB="{{.CLI_ARGS}}"
-        if [ -z "$MEM_LIMIT_MB" ] || ! [ "$MEM_LIMIT_MB" -gt 0 ] 2>/dev/null; then
-          echo "Usage: task host:php -- <container-mem-limit-in-MiB>" >&2
-          echo "Example: task host:php -- 256" >&2
-          exit 1
-        fi
-
-        # Per-worker estimate for Symfony + Doctrine + warm opcache.
-        # Conservative — real workers run 40–80 MiB depending on bundles.
-        PER_WORKER_MB=60
-        # PHP-FPM master + connection pools + non-pool overhead.
-        OVERHEAD_MB=50
-        # OPcache: scale with mem_limit, bounded.
-        if [ "$MEM_LIMIT_MB" -lt 384 ]; then
-          OPCACHE_MB=64
-        elif [ "$MEM_LIMIT_MB" -lt 1024 ]; then
-          OPCACHE_MB=128
-        else
-          OPCACHE_MB=256
-        fi
-
-        WORKER_BUDGET=$((MEM_LIMIT_MB - OPCACHE_MB - OVERHEAD_MB))
-        if [ "$WORKER_BUDGET" -lt 120 ]; then
-          echo "Error: ${MEM_LIMIT_MB} MiB is too small for os2display." >&2
-          echo "       After OPcache (${OPCACHE_MB} MiB) + FPM overhead (${OVERHEAD_MB} MiB)," >&2
-          echo "       only ${WORKER_BUDGET} MiB remain for workers — not enough for 2 × ${PER_WORKER_MB} MiB." >&2
-          echo "       Bump the os2display mem_limit to at least 256 MiB (compose.resource-limits.yml)." >&2
-          exit 1
-        fi
-
-        MAX_CHILDREN=$((WORKER_BUDGET / PER_WORKER_MB))
-        [ "$MAX_CHILDREN" -lt 2 ] && MAX_CHILDREN=2
-        START_SERVERS=$((MAX_CHILDREN / 4))
-        [ "$START_SERVERS" -lt 2 ] && START_SERVERS=2
-        MIN_SPARE=$((MAX_CHILDREN / 5))
-        [ "$MIN_SPARE" -lt 2 ] && MIN_SPARE=2
-        MAX_SPARE=$((MAX_CHILDREN / 2))
-        [ "$MAX_SPARE" -le "$MIN_SPARE" ] && MAX_SPARE=$((MIN_SPARE + 1))
-
-        # Math explanation to stderr; stdout is pure env-var lines.
-        {
-          echo "Container mem_limit: ${MEM_LIMIT_MB} MiB"
-          echo "  OPcache:               ${OPCACHE_MB} MiB"
-          echo "  PHP-FPM overhead:      ${OVERHEAD_MB} MiB"
-          echo "  Worker budget:         ${WORKER_BUDGET} MiB"
-          echo "  Per-worker estimate:   ${PER_WORKER_MB} MiB (Symfony + Doctrine, conservative)"
-          echo "Recommended pool sizing:"
-          echo "  pm.max_children:       ${MAX_CHILDREN}"
-          echo "  pm.start_servers:      ${START_SERVERS}"
-          echo "  pm.min_spare_servers:  ${MIN_SPARE}"
-          echo "  pm.max_spare_servers:  ${MAX_SPARE}"
-          echo
-          echo "Merge these into .env.php (replace existing PHP_PM_* / PHP_OPCACHE_MEMORY_CONSUMPTION):"
-        } >&2
-
-        cat <<EOF
-        PHP_OPCACHE_MEMORY_CONSUMPTION=${OPCACHE_MB}
-        PHP_PM_MAX_CHILDREN=${MAX_CHILDREN}
-        PHP_PM_START_SERVERS=${START_SERVERS}
-        PHP_PM_MIN_SPARE_SERVERS=${MIN_SPARE}
-        PHP_PM_MAX_SPARE_SERVERS=${MAX_SPARE}
-        EOF
+      - ./scripts/host-php.sh {{.CLI_ARGS}}
 
   host:disk:
     desc: Show stack disk usage (bind mounts + named volumes) vs host disk available
@@ -583,13 +365,14 @@ tasks:
   # -- Dev tooling ------------------------------------------------------------
 
   dev:lint:
-    desc: Run all linters in check mode (Markdown + YAML)
+    desc: Run all linters in check mode (Markdown + YAML + Shell)
     deps:
       - dev:lint:md
       - dev:lint:yaml
+      - dev:lint:sh
 
   dev:lint:fix:
-    desc: Auto-fix all lint issues (Markdown + YAML)
+    desc: Auto-fix all lint issues (Markdown + YAML; shellcheck has no fix mode)
     deps:
       - dev:lint:md:fix
       - dev:lint:yaml:fix
@@ -613,6 +396,11 @@ tasks:
     desc: Auto-fix YAML formatting (Prettier --write)
     cmds:
       - docker compose --profile dev run --rm prettier '**/*.{yml,yaml}' --write
+
+  dev:lint:sh:
+    desc: Lint shell scripts in scripts/ via shellcheck (read-only; no auto-fix)
+    cmds:
+      - docker compose --profile dev run --rm shellcheck scripts/*.sh
 
   # -- Internal ---------------------------------------------------------------
 

@@ -42,9 +42,17 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
 - Markdown and YAML linting via the `dev` compose profile (`markdownlint` and `prettier`
   services). Configs adopted from
   [itk-dev/devops_itkdev-docker](https://github.com/itk-dev/devops_itkdev-docker).
-- GitHub Actions workflows: `Markdown`, `YAML`, `Compose` (synthesis + image-availability +
-  env-coverage). Pre-merge gates that catch dangling `${VAR}` references, missing image tags,
-  and lint regressions.
+- GitHub Actions workflows: `Markdown`, `YAML`, `Shell`, `Compose` (synthesis +
+  image-availability + env-coverage). Pre-merge gates that catch dangling `${VAR}` references,
+  missing image tags, lint regressions, and shell footguns.
+- `scripts/` directory: extracted helpers for the longer Taskfile bodies that the upstream
+  [Taskfile style guide](https://taskfile.dev/styleguide/) recommends moving out
+  ("Prefer using external scripts instead of multi-line commands"). `host-resources.sh`,
+  `host-php.sh`, `logs-disk.sh`, and `env-traefik.sh` replace ~50–70-line inline blocks; their
+  Taskfile entries shrink to a single `./scripts/<name>.sh` invocation. All scripts run under
+  `set -euo pipefail` and are linted by `shellcheck` via the `shellcheck` dev-profile service
+  and the new `task dev:lint:sh` / `Shell` CI workflow. Borderline tasks (`host:disk`,
+  `db:backup`, `env:init`, etc.) stay inline.
 
 ### Changed (breaking)
 
