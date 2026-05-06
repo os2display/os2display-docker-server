@@ -212,6 +212,47 @@ hostnames in your cert.
 Traefik dashboard `SERVER_DOMAIN`. A wildcard cert (`*.example.com`) is the simplest path. See
 [Caveats](#caveats-and-foot-guns).
 
+#### How do I run the stack on localhost without a public domain?
+
+For local-host development without a real DNS name or Let's Encrypt:
+
+1. Set localhost-friendly domains in `.env` and `.env.traefik`:
+
+   ```bash
+   # .env
+   OS2DISPLAY_SERVER_DOMAIN=os2display.localhost
+
+   # .env.traefik
+   SERVER_DOMAIN=traefik.localhost
+   SERVER_CERT_PROVIDER=cert-file
+   SERVER_CUSTOM_CERT_FILE=dev.crt
+   SERVER_CUSTOM_KEY_FILE=dev.key
+   ```
+
+   `*.localhost` resolves to `127.0.0.1` automatically on Linux, macOS, and Windows per
+   RFC 6761 — no `/etc/hosts` edit needed.
+
+2. Generate a self-signed cert:
+
+   ```bash
+   task dev:cert
+   ```
+
+   Writes `traefik/ssl/dev.{crt,key}` covering both `*.localhost` SANs plus plain `localhost`
+   and `127.0.0.1`. Uses a transient `alpine/openssl` container, so no host `openssl`
+   dependency. `FORCE=1 task dev:cert` to regenerate.
+
+3. `task install` and visit `https://os2display.localhost/admin`. The browser shows an
+   "untrusted CA" warning the first time — accept it (or trust `traefik/ssl/dev.crt` in your
+   system keychain to skip the prompt; macOS `security add-trusted-cert -k
+   ~/Library/Keychains/login.keychain-db traefik/ssl/dev.crt`).
+
+**Caveats.** If you've previously run a real-cert stack on the same domain, the browser's
+HSTS cache may refuse the self-signed cert. Use a fresh `.localhost` name to avoid this. The
+filenames `dev.{crt,key}` are deliberate — they sit alongside any operator-supplied
+production `docker.{crt,key}` without overwriting it. Not for production: RSA-2048 / SHA-256
+/ 365 days / untrusted CA.
+
 #### How do I run with an external database?
 
 ```bash
@@ -680,15 +721,20 @@ Working on this repo is the same as running it as an operator, with two extras:
   Run these before opening a PR; CI runs the same checks on every push.
 
 - **Test against a throwaway domain.** The stack only runs in HTTPS mode (Traefik forces it).
-  For local-host testing, use the Let's Encrypt staging server (lower rate limit, untrusted
-  CA — operating-system trust prompts are normal):
+  Two paths for local development:
 
-  ```bash
-  $EDITOR .env.traefik
-  # TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_CASERVER=https://acme-staging-v02.api.letsencrypt.org/directory
-  ```
+  - **Self-signed cert (offline-friendly).** `task dev:cert` generates
+    `traefik/ssl/dev.{crt,key}` covering `*.localhost`; pair with
+    `SERVER_CERT_PROVIDER=cert-file` and `OS2DISPLAY_SERVER_DOMAIN=os2display.localhost`.
+    Full recipe in the cookbook entry "How do I run the stack on localhost without a public
+    domain?". This is the default suggestion.
+  - **Let's Encrypt staging.** Needs a public DNS name + reachable port 80; gives you a real
+    chain but with an untrusted staging CA root.
 
-  Or use `SERVER_CERT_PROVIDER=cert-file` with a self-signed cert.
+    ```bash
+    $EDITOR .env.traefik
+    # TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_CASERVER=https://acme-staging-v02.api.letsencrypt.org/directory
+    ```
 
 Standard fork-and-PR flow. PRs run four CI workflows (Markdown, YAML, Shell, Compose). The Compose
 workflow is the most likely to surface issues — it asserts that every pinned image is
@@ -720,7 +766,8 @@ reachable on its registry and every `${VAR}` reference in `docker-compose.yml` r
 │   ├── host-resources.sh                    # compose tasks; lint via `task dev:lint:sh`
 │   ├── host-php.sh
 │   ├── logs-disk.sh
-│   └── env-traefik.sh
+│   ├── env-traefik.sh
+│   └── dev-cert.sh                          # `task dev:cert` — self-signed local cert
 │
 ├── jwt/                                     # JWT keypair storage (gitignored)
 ├── media/                                   # media bind mount (gitignored)
@@ -836,12 +883,14 @@ Host inspection
   host:disk:tenants    ./media usage broken down by tenant key
 
 Dev tooling
-  dev:lint             Check Markdown + YAML
-  dev:lint:fix         Auto-fix Markdown + YAML
+  dev:lint             Check Markdown + YAML + Shell
+  dev:lint:fix         Auto-fix Markdown + YAML (shellcheck has no fix mode)
   dev:lint:md          Check Markdown only
   dev:lint:md:fix      Auto-fix Markdown only
   dev:lint:yaml        Check YAML only (Prettier --check)
   dev:lint:yaml:fix    Auto-fix YAML (Prettier --write)
+  dev:lint:sh          Lint scripts/*.sh via shellcheck (no fix mode)
+  dev:cert             Generate a self-signed cert for local-host development
 ```
 
 `task --list` shows the canonical list with aliases. Internal helper tasks

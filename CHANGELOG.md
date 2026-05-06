@@ -53,15 +53,23 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
   `set -euo pipefail` and are linted by `shellcheck` via the `shellcheck` dev-profile service
   and the new `task dev:lint:sh` / `Shell` CI workflow. Borderline tasks (`host:disk`,
   `db:backup`, `env:init`, etc.) stay inline.
+- `task dev:cert` — generates a self-signed certificate at `traefik/ssl/dev.{crt,key}` for
+  local-host development with `SERVER_CERT_PROVIDER=cert-file`. Wraps an `openssl req -x509`
+  invocation in a transient `alpine/openssl` container (no host openssl needed); SANs cover
+  `OS2DISPLAY_SERVER_DOMAIN`, `SERVER_DOMAIN`, `localhost`, and `127.0.0.1`, defaulting to
+  `*.localhost` when env files haven't been bootstrapped. `FORCE=1` to overwrite. Cookbook
+  recipe: "How do I run the stack on localhost without a public domain?".
 
 ### Changed (breaking)
 
 - `socket-proxy` service hardened: image moved from unpinned
   `itkdev/docker-socket-proxy` (Docker Hub) to
   `ghcr.io/tecnativa/docker-socket-proxy:v0.4.2` (upstream, version-pinned).
-  Dropped `user: root`, added `read_only: true` + `tmpfs: [/run]`,
+  Dropped `user: root`, added `read_only: true` + `tmpfs: [/run, /tmp]`,
   `security_opt: [no-new-privileges:true]`, and a healthcheck against
-  `/version`.
+  `/version`. (`/tmp` was added after end-to-end testing showed the
+  upstream entrypoint generates `/tmp/haproxy.cfg` from a template at
+  start; without a writable `/tmp` the container restarted forever.)
 - **Operator env config split into one file per service.** Previously runtime
   tunables (`PHP_*`, `NGINX_*`, `MARIADB_*`) lived in `.env` and were
   substituted into compose `environment:` blocks; Symfony app config lived in
@@ -86,6 +94,13 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
 
 ### Fixed
 
+- **`scripts/env-traefik.sh` portability + compose-escape.** Surfaced by
+  end-to-end localhost testing on macOS: `sed -i` used GNU-only syntax
+  (BSD sed wants `-i.bak`), and the htpasswd `$` characters weren't
+  escaped to `$$` for compose interpolation, so the dashboard auth header
+  was mangled (`$apr1$...` got read as undefined env vars and substituted
+  to empty). Both fixed; the script now works on macOS dev hosts and
+  produces a compose-safe `SERVER_DASHBOARD_AUTH` value.
 - **Cert resolver hardcoded to Let's Encrypt for cert-file operators.** The traefik dashboard
   router carried `tls.certresolver=letsencrypt` regardless of `SERVER_CERT_PROVIDER`, and the
   static `traefik.yml` set `letsencrypt` as the default `certResolver` on the websecure
