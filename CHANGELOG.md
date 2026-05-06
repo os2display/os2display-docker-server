@@ -123,6 +123,10 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
   fresh install, so keeping site-specific tuning out of that file makes re-bootstraps clean.
   All `*.local` files are gitignored. Cookbook recipe: "How do I override env config locally
   without committing?".
+- README: CI / license / tooling badges below the title and a Mermaid network-topology diagram
+  in the "Network topology" section visualising the three docker networks (`frontend`, `app`,
+  `proxy`), the request flow (Internet → Traefik → nginx-api → os2display → MariaDB / Redis),
+  and the read-only `socket-proxy` boundary that brokers Traefik's docker socket access.
 
 ### Changed (breaking)
 

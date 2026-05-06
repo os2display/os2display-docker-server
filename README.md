@@ -1,5 +1,15 @@
 # OS2display v3 — Docker hosting
 
+[![E2E](https://github.com/os2display/os2display-docker-server/actions/workflows/e2e.yaml/badge.svg?branch=release%2F3.0.0)](https://github.com/os2display/os2display-docker-server/actions/workflows/e2e.yaml)
+[![Compose](https://github.com/os2display/os2display-docker-server/actions/workflows/compose.yaml/badge.svg)](https://github.com/os2display/os2display-docker-server/actions/workflows/compose.yaml)
+[![Tasks](https://github.com/os2display/os2display-docker-server/actions/workflows/tasks.yaml/badge.svg)](https://github.com/os2display/os2display-docker-server/actions/workflows/tasks.yaml)
+[![Markdown](https://github.com/os2display/os2display-docker-server/actions/workflows/markdown.yaml/badge.svg)](https://github.com/os2display/os2display-docker-server/actions/workflows/markdown.yaml)
+[![Shell](https://github.com/os2display/os2display-docker-server/actions/workflows/sh.yaml/badge.svg)](https://github.com/os2display/os2display-docker-server/actions/workflows/sh.yaml)
+[![YAML](https://github.com/os2display/os2display-docker-server/actions/workflows/yaml.yaml/badge.svg)](https://github.com/os2display/os2display-docker-server/actions/workflows/yaml.yaml)
+[![License: MPL 2.0](https://img.shields.io/badge/license-MPL_2.0-brightgreen.svg)](https://www.mozilla.org/en-US/MPL/2.0/)
+[![Docker Compose v2](https://img.shields.io/badge/docker--compose-v2-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
+[![Task v3](https://img.shields.io/badge/task-v3-29BEB0)](https://taskfile.dev/)
+
 Deployment tooling for hosting the [os2display](https://github.com/os2display) v3 API on a single
 host. Wraps the upstream
 [`display-api-service`](https://github.com/os2display/display-api-service) image (which bundles
@@ -167,6 +177,39 @@ activated explicitly via `docker compose --profile dev run …`, never by `task 
 
 ### Network topology
 
+```mermaid
+flowchart LR
+    Internet((Internet))
+
+    subgraph frontend ["frontend network (public)"]
+        direction TB
+        Traefik[Traefik]
+        NginxAPI[nginx-api]
+    end
+
+    subgraph proxy ["proxy network (internal)"]
+        SocketProxy["socket-proxy<br/>(RO docker.sock)"]
+    end
+
+    subgraph app ["app network (internal)"]
+        direction TB
+        OS2Display["os2display<br/>(PHP-FPM)"]
+        Redis[(Redis)]
+        MariaDB[(MariaDB)]
+    end
+
+    Media[/"./media bind mount"/]
+
+    Internet -->|":80, :443"| Traefik
+    Traefik -->|HTTP| NginxAPI
+    NginxAPI -->|"FastCGI :9000"| OS2Display
+    OS2Display --> Redis
+    OS2Display --> MariaDB
+    Traefik -.->|read-only docker API| SocketProxy
+    NginxAPI -.->|reads| Media
+    OS2Display -.->|writes| Media
+```
+
 Three docker networks:
 
 - **`frontend`** (compose-managed by default) — the public-facing network. Traefik attaches here
@@ -175,6 +218,8 @@ Three docker networks:
   network with other compose projects, see
   [Cookbook: share Traefik with another compose project](#how-do-i-share-traefik-with-another-compose-project).
 - **`app`** (internal, compose-managed) — isolates os2display ↔ nginx-api ↔ redis ↔ mariadb.
+  `nginx-api` is the only service that straddles `app` and `frontend` (see diagram); every other
+  application service is reachable only over `app`.
 - **`proxy`** (internal, compose-managed, traefik profile only) — locks down Traefik ↔
   socket-proxy. Read-only docker socket exposure on a network with `internal: true`, no
   bridge to the host.
