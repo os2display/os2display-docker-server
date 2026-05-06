@@ -301,6 +301,21 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
 
 ### Documentation
 
+- **README polish pass.** Quick Start condensed from five manual `cp`/`$EDITOR` steps to three
+  task invocations (`task env:init` → `task env:traefik` → `task install`) — `task env:init`
+  now creates `.env` (prompting for the domain), copies per-service templates, and bootstraps
+  `.env.symfony`, so the manual `cp` steps are redundant. Cookbook gets a TOC linking all 24
+  recipes; the duplicate "How do I read service logs?" stub merged into "How do I tail and
+  triage logs?". Caveats and foot-guns gets per-topic `####` sub-headings + a TOC. New
+  Configuration files preamble explicitly states three project-wide conventions: shipped
+  examples are sane production defaults (sentinels for what can't be defaulted), all
+  configuration options are documented in the `.env.<X>.example` files, `env_file:` per
+  service (not compose `environment:`) for clean isolation. Design principles add an
+  explicit reference to the [Taskfile style guide](https://taskfile.dev/styleguide/) the
+  Taskfile follows.
+- Prerequisites tightened: `task db:backup` clarified to run `mariadb-dump` *inside* the
+  mariadb container (no host-side mariadb-dump dep). Production deploy target stays Linux,
+  but the no-host-tooling promise is explicit.
 - README rewritten end-to-end. Split into **Operator guide** (prerequisites, quick start,
   per-service config files, stack composition, network topology, cookbook, caveats &
   foot-guns, 2.x→3.x migration) and **Developer guide** (design principles, local dev,
