@@ -25,6 +25,8 @@ tasks:
     preconditions:
       - sh: "[ -f .env.symfony ]"
         msg: ".env.symfony missing — run 'task env:init' first to bootstrap all env files."
+      - sh: '[ "${SERVER_DASHBOARD_AUTH:-}" != "CHANGE_ME" ]'
+        msg: "Traefik dashboard auth not set — run 'task env:traefik' first (or set SERVER_DASHBOARD_AUTH manually in .env.traefik)."
     cmds:
       - echo "Installing"
       - ./scripts/install-secrets.sh
