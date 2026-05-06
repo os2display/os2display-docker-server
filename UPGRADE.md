@@ -155,9 +155,9 @@ $EDITOR .env.symfony
 # - Run `task env:diff` after editing to spot any keys upstream added that you haven't set.
 
 # Per-service runtime config: copy from the production examples and edit.
-cp .env.php.production.example     .env.php
-cp .env.nginx.production.example   .env.nginx
-cp .env.mariadb.production.example .env.mariadb
+cp .env.php.example     .env.php
+cp .env.nginx.example   .env.nginx
+cp .env.mariadb.example .env.mariadb
 $EDITOR .env.mariadb
 # Match credentials to the user/password/database in your old .env.docker.local —
 # they MUST equal the user / password / db in DATABASE_URL above. Mismatched credentials

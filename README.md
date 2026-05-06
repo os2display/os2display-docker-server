@@ -86,9 +86,9 @@ task env:init
 $EDITOR .env.symfony
 
 # 3. Per-service runtime config. task install will auto-create any you skip.
-cp .env.php.production.example     .env.php
-cp .env.nginx.production.example   .env.nginx
-cp .env.mariadb.production.example .env.mariadb     # only if running bundled mariadb
+cp .env.php.example     .env.php
+cp .env.nginx.example   .env.nginx
+cp .env.mariadb.example .env.mariadb     # only if running bundled mariadb
 $EDITOR .env.php .env.mariadb                        # set production credentials, tune as needed
 
 # 4. Traefik dashboard auth + Let's Encrypt email (interactive prompts).
@@ -105,17 +105,17 @@ After `task install` returns, the API + bundled admin UI + screen client are rea
 
 ### Configuration files
 
-Each service reads its own env file. The checked-in `.production.example` files are the canonical
+Each service reads its own env file. The checked-in `.example` files are the canonical
 templates; edit your local copy, never the committed one.
 
 | File | Service | Purpose | Bootstrap |
 |---|---|---|---|
 | `.env` | (compose) | Compose orchestration: project name, profile, image versions, server domain. Read by `docker compose` for substitution into the YAML before parsing. | `cp .env.example .env` |
 | `.env.symfony` | os2display | Symfony app config — `APP_SECRET`, `DATABASE_URL`, `JWT_*`, `INTERNAL_OIDC_*`, `EXTERNAL_OIDC_*`, `ADMIN_*`, `CLIENT_*`, calendar feed, etc. | `task env:init` (extracts `/app/.env` from the API image — the upstream-canonical source) |
-| `.env.php` | os2display | PHP-FPM runtime tuning — `PHP_MEMORY_LIMIT`, `PHP_OPCACHE_*`, `PHP_PM_*`. | `cp .env.php.production.example .env.php` |
-| `.env.nginx` | nginx-api | Nginx runtime tuning — `NGINX_MAX_BODY_SIZE`, etc. | `cp .env.nginx.production.example .env.nginx` |
-| `.env.mariadb` | mariadb | MariaDB credentials. Must match the `DATABASE_URL` user + password + database in `.env.symfony`. | `cp .env.mariadb.production.example .env.mariadb` |
-| `.env.traefik` | traefik | Dashboard auth, Let's Encrypt email, cert provider. | `task env:traefik` (interactive) or copy from `.env.traefik.production.example` |
+| `.env.php` | os2display | PHP-FPM runtime tuning — `PHP_MEMORY_LIMIT`, `PHP_OPCACHE_*`, `PHP_PM_*`. | `cp .env.php.example .env.php` |
+| `.env.nginx` | nginx-api | Nginx runtime tuning — `NGINX_MAX_BODY_SIZE`, etc. | `cp .env.nginx.example .env.nginx` |
+| `.env.mariadb` | mariadb | MariaDB credentials. Must match the `DATABASE_URL` user + password + database in `.env.symfony`. | `cp .env.mariadb.example .env.mariadb` |
+| `.env.traefik` | traefik | Dashboard auth, Let's Encrypt email, cert provider. | `task env:traefik` (interactive) or copy from `.env.traefik.example` |
 
 Why this split: each service's compose block has its own `env_file:` referring to one or two of
 these files. Vars don't leak across services, the compose file has no translation blocks, and
@@ -599,7 +599,7 @@ Symptoms of getting it wrong: thumbnails 404, uploaded images don't render. Alwa
 
 **`PHP_OPCACHE_VALIDATE_TIMESTAMPS=0` in production.** `=1` makes opcache check file mtime on
 every request — fine in development for live reloads, terrible in production for performance.
-The `.env.php.production.example` defaults to `=0`. If you copied it to `.env.php` and edited
+The `.env.php.example` defaults to `=0`. If you copied it to `.env.php` and edited
 to `=1`, expect significant CPU + I/O overhead.
 
 **Let's Encrypt rate limits.** Production LE allows 50 certificate issuances per registered
@@ -642,7 +642,7 @@ a registry mirror lifts further. See
 from a 2.x deployment or experiment, it will silently apply on top of `docker-compose.yml`.
 Inspect with `docker compose config | grep -A 5 <suspicious-service>` to see the merged result.
 
-**Don't edit the committed `.production.example` files for your operator config.** The
+**Don't edit the committed `.example` files for your operator config.** The
 production examples are checked-in templates; your operator edits go into `.env.<service>`
 (gitignored). Editing the templates means future `task install` invocations bootstrap your
 custom values into other operator's checkouts and `git status` is permanently dirty.
@@ -681,11 +681,11 @@ The repo is a thin wrapper around upstream tooling. The constraints we work unde
    - **Native YAML anchors** (`x-logging`) for repeated config blocks.
 
 3. **Per-service env files.** One file per service, named `.env.<service>`, with a checked-in
-   `.env.<service>.production.example` template. No mega-file mixing Symfony app config with
+   `.env.<service>.example` template. No mega-file mixing Symfony app config with
    PHP runtime tuning with MariaDB credentials. Compose `environment:` translation blocks
    (`- APP_X=${APP_X}`) are forbidden — they shadow `env_file:` and create a split surface.
 
-4. **Production examples are canonical.** The `.production.example` files in this repo are the
+4. **Production examples are canonical.** The `.example` files in this repo are the
    source of truth for runtime/deployment config. Symfony app config is the asymmetric
    exception — the upstream API image's `/app/.env` is canonical there, and
    `task env:init` extracts it. We don't duplicate upstream content.
@@ -749,10 +749,10 @@ reachable on its registry and every `${VAR}` reference in `docker-compose.yml` r
 ├── Taskfile.yml                             # operator workflow
 │
 ├── .env.example                             # compose orchestration template
-├── .env.php.production.example              # per-service runtime templates
-├── .env.nginx.production.example
-├── .env.mariadb.production.example
-├── .env.traefik.production.example
+├── .env.php.example              # per-service runtime templates
+├── .env.nginx.example
+├── .env.mariadb.example
+├── .env.traefik.example
 │
 ├── traefik/
 │   ├── traefik-letsencrypt.yml              # static config, LE variant
@@ -766,7 +766,9 @@ reachable on its registry and every `${VAR}` reference in `docker-compose.yml` r
 │   ├── host-resources.sh                    # compose tasks; lint via `task dev:lint:sh`
 │   ├── host-php.sh
 │   ├── logs-disk.sh
-│   ├── env-traefik.sh
+│   ├── env-traefik.sh                       # `task env:traefik` — interactive setup
+│   ├── env-init.sh                          # `task env:init` — image extract + secret gen
+│   ├── install-secrets.sh                   # `task install` step — auto-fill CHANGE_ME
 │   └── dev-cert.sh                          # `task dev:cert` — self-signed local cert
 │
 ├── jwt/                                     # JWT keypair storage (gitignored)
@@ -835,7 +837,7 @@ file-copy header at the top of each lints config preserves provenance for sync.
   2. `image-availability` — `docker buildx imagetools inspect` against every pinned image.
      Catches a tag that didn't ship.
   3. `env-coverage` — every bare `${VAR}` reference in `docker-compose.yml` is declared in
-     `.env.example` or `.env.traefik.production.example`. Catches the silent-empty
+     `.env.example` or `.env.traefik.example`. Catches the silent-empty
      substitution case.
 
 All four trigger on `pull_request` and pushes to `main` / `develop` / `release/**`.
