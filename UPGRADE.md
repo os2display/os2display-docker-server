@@ -130,40 +130,48 @@ Bootstrap each:
 cp .env.example .env
 $EDITOR .env
 # OS2DISPLAY_SERVER_DOMAIN=...                  (was COMPOSE_SERVER_DOMAIN in 1.x)
-# OS2DISPLAY_VERSION_API=3.0.0-rc1              (was COMPOSE_VERSION_API)
+# OS2DISPLAY_VERSION_API=<latest 3.x tag>       (was COMPOSE_VERSION_API; see
+#                                                .env.example for the current pin)
 # COMPOSE_PROFILES=mariadb,traefik              (replaces INTERNAL_DATABASE=true and
 #                                                INTERNAL_PROXY=true; combine into a profile
 #                                                list)
 
 # Symfony app config: convert your old .env.docker.local. task env:migrate strips the
-# APP_ prefix from every key except APP_ENV / APP_SECRET, writing the result to
+# APP_ prefix from every key except the framework-defined trio (APP_ENV / APP_SECRET /
+# APP_DEBUG, all of which Symfony recognises by name), writing the result to
 # .env.symfony.migrated for review.
 task env:migrate
 diff -u .env.docker.local .env.symfony.migrated      # sanity check
+$EDITOR .env.symfony.migrated
+# - Strip any 1.x compose-orchestration block at the top of the file
+#   (COMPOSE_PROJECT_NAME, COMPOSE_VERSION_API, COMPOSE_SERVER_DOMAIN,
+#    INTERNAL_DATABASE, INTERNAL_PROXY). Those don't belong in .env.symfony —
+#   their v3 equivalents live in .env (created above).
+# - Set DATABASE_URL serverVersion to "11.4.10-MariaDB" (post-MariaDB upgrade — see step 6).
+# - Rename per-site customisation keys to their v3 prefixes (the script can't
+#   infer this — only the APP_ → bare-name strip is automatic):
+#     TOUCH_BUTTON_REGIONS    → ADMIN_TOUCH_BUTTON_REGIONS
+#     REJSEPLANEN_API_KEY     → ADMIN_REJSEPLANEN_APIKEY
+#     SHOW_SCREEN_STATUS      → ADMIN_SHOW_SCREEN_STATUS
+#     DATA_PULL_INTERVAL      → CLIENT_PULL_STRATEGY_INTERVAL
+#     SCHEDULING_INTERVAL     → CLIENT_SCHEDULING_INTERVAL
+# - The image's bundled .env supplies sane ADMIN_* / CLIENT_* defaults; the renames
+#   above are only needed for keys you'd customised in 1.x.
 mv .env.symfony.migrated .env.symfony
 
-$EDITOR .env.symfony
-# - Set DATABASE_URL serverVersion to "11.4.10-MariaDB" (post-MariaDB upgrade — see step 6).
-# - Add ADMIN_* and CLIENT_* keys for the bundled admin UI + screen client. The image
-#   defaults suffice for a working install; per-site customisation maps onto:
-#     APP_TOUCH_BUTTON_REGIONS  → ADMIN_TOUCH_BUTTON_REGIONS
-#     APP_REJSEPLANEN_API_KEY   → ADMIN_REJSEPLANEN_APIKEY
-#     APP_SHOW_SCREEN_STATUS    → ADMIN_SHOW_SCREEN_STATUS
-#     APP_DATA_PULL_INTERVAL    → CLIENT_PULL_STRATEGY_INTERVAL
-#     APP_SCHEDULING_INTERVAL   → CLIENT_SCHEDULING_INTERVAL
-#     APP_DEBUG                 → CLIENT_DEBUG
-# - Run `task env:diff` after editing to spot any keys upstream added that you haven't set.
+# Run `task env:diff` after editing to spot any keys upstream added that you haven't set.
 
-# Per-service runtime config: copy from the production examples and edit.
-cp .env.php.example     .env.php
-cp .env.nginx.example   .env.nginx
-cp .env.mariadb.example .env.mariadb
+# Per-service runtime config + Traefik: task env:init creates the per-service env files
+# (.env.php, .env.nginx, .env.mariadb, .env.traefik) from .env.<svc>.example. It detects
+# .env.symfony already exists from env:migrate and skips it (no FORCE=1 needed).
+task env:init
+
 $EDITOR .env.mariadb
 # Match credentials to the user/password/database in your old .env.docker.local —
 # they MUST equal the user / password / db in DATABASE_URL above. Mismatched credentials
 # means Doctrine can't connect, AND mariadb won't re-initialise its data dir with new ones.
 
-# Traefik: re-run the interactive setup task, or copy and edit by hand.
+# Traefik: re-run the interactive setup task, or edit .env.traefik by hand.
 task env:traefik
 ```
 
@@ -227,7 +235,7 @@ further.
       and OIDC config.
 - [ ] Open an existing slide; thumbnails render. If they 404, check `./media` permissions
       (UID 1042 owner, group-readable for UID 101 nginx — see
-      [README § Create the deploy-user](README.md#create-the-deploy-user)).
+      [README § Prerequisites](README.md#prerequisites)).
 - [ ] `https://<your-domain>/client/` loads the screen client, can authenticate as a screen,
       pulls and displays content.
 - [ ] (If you exposed it) `https://<traefik-host>/traefik/dashboard/` loads after basic-auth.

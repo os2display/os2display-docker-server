@@ -191,6 +191,19 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
 - **`${SERVER_*}` substitutions in Traefik labels** previously resolved empty because compose
   didn't read `.env.traefik` for substitution. The Taskfile `COMPOSE` var now passes
   `--env-file .env.traefik` to every compose invocation.
+- **`task env:migrate` stripped `APP_DEBUG` to `DEBUG`.** Symfony recognises the framework-defined
+  trio (`APP_ENV`, `APP_SECRET`, `APP_DEBUG`) by name, so renaming `APP_DEBUG` silently broke
+  env-driven debug-mode config on a 1.x → 3.x migration. `APP_DEBUG` is now in the preserve list.
+  Also extended the trailing manual-follow-up note to flag the 1.x compose-orchestration block
+  carryover (`COMPOSE_*`, `INTERNAL_*` from `.env.docker.local`) and the per-site `APP_*` →
+  `ADMIN_*` / `CLIENT_*` renames the script can't infer.
+- **`UPGRADE.md`** broken anchor `README.md#create-the-deploy-user` → `README.md#prerequisites`
+  (heading was renamed in the README consolidation; the UID 1042 / 101 contract content is now
+  under `### Prerequisites`). Also replaced a stale `OS2DISPLAY_VERSION_API=3.0.0-rc1` example
+  with a `<latest 3.x tag>` placeholder so the recipe stops dating with each rc bump, and
+  re-walked step 5 to use `task env:init` for the per-service `.env.{php,nginx,mariadb,traefik}`
+  files (instead of four manual `cp` commands) — `env:init` is idempotent and skips
+  `.env.symfony` once `env:migrate` has produced it.
 
 ### Security
 

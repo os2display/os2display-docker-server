@@ -237,8 +237,10 @@ tasks:
           exit 1
         fi
         OUT=.env.symfony.migrated
-        # Strip APP_ prefix from every key except APP_ENV and APP_SECRET (those stay).
-        sed -E '/^APP_(ENV|SECRET)=/!s/^APP_([A-Z_][A-Z0-9_]*=)/\1/' "$SRC" > "$OUT"
+        # Strip APP_ prefix from every key EXCEPT the framework-defined trio
+        # (APP_ENV, APP_SECRET, APP_DEBUG) — Symfony recognises those by name,
+        # and renaming them silently breaks env-driven debug/secret/env config.
+        sed -E '/^APP_(ENV|SECRET|DEBUG)=/!s/^APP_([A-Z_][A-Z0-9_]*=)/\1/' "$SRC" > "$OUT"
         echo "Wrote $OUT (from $SRC)."
         echo "Review with: diff -u $SRC $OUT"
         echo "Apply with:  mv $OUT .env.symfony"
@@ -247,6 +249,17 @@ tasks:
         echo "values from your old .env.docker.local belong in .env.php, .env.nginx,"
         echo "and .env.mariadb respectively — copy from the .example files"
         echo "and edit per your deployment."
+        echo ""
+        echo "Manual follow-ups (the script can't infer these):"
+        echo "  - Strip any 1.x compose-orchestration block (COMPOSE_*, INTERNAL_*)"
+        echo "    from the top of $OUT — those don't belong in .env.symfony."
+        echo "    Move COMPOSE_PROJECT_NAME / COMPOSE_PROFILES to .env instead."
+        echo "  - Rename per-site customisation keys to their v3 prefixes:"
+        echo "      TOUCH_BUTTON_REGIONS    -> ADMIN_TOUCH_BUTTON_REGIONS"
+        echo "      REJSEPLANEN_API_KEY     -> ADMIN_REJSEPLANEN_APIKEY"
+        echo "      SHOW_SCREEN_STATUS      -> ADMIN_SHOW_SCREEN_STATUS"
+        echo "      DATA_PULL_INTERVAL      -> CLIENT_PULL_STRATEGY_INTERVAL"
+        echo "      SCHEDULING_INTERVAL     -> CLIENT_SCHEDULING_INTERVAL"
 
   env:traefik:
     desc: Setup .env.traefik (domain, email, dashboard auth) — interactive
