@@ -41,8 +41,12 @@ services:
     env_file:
       - path: .env.symfony
         required: true
+      - path: .env.symfony.local
+        required: false
       - path: .env.php
         required: true
+      - path: .env.php.local
+        required: false
     healthcheck:
       test: ["CMD", "php", "-r", "exit(@fsockopen('127.0.0.1', 9000) ? 0 : 1);"]
       interval: 30s
@@ -65,6 +69,8 @@ services:
     env_file:
       - path: .env.nginx
         required: true
+      - path: .env.nginx.local
+        required: false
     depends_on:
       os2display:
         condition: service_healthy
@@ -117,6 +123,8 @@ services:
     env_file:
       - path: .env.mariadb
         required: true
+      - path: .env.mariadb.local
+        required: false
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 30s
@@ -137,6 +145,8 @@ services:
     env_file:
       - path: .env.traefik
         required: true
+      - path: .env.traefik.local
+        required: false
     ports:
       - "80:80"
       - "443:443"

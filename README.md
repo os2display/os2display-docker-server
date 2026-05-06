@@ -300,6 +300,37 @@ filenames `dev.{crt,key}` are deliberate — they sit alongside any operator-sup
 production `docker.{crt,key}` without overwriting it. Not for production: RSA-2048 / SHA-256
 / 365 days / untrusted CA.
 
+#### How do I override env config locally without committing?
+
+Each service's compose `env_file:` block reads two files in order:
+`.env.<svc>` (the operator's primary config, copied from the committed
+`.env.<svc>.example` template) and an optional `.env.<svc>.local` (loaded
+on top, overrides earlier values). The same pattern applies to
+`.env.symfony.local`. All `*.local` files are gitignored.
+
+```bash
+# Example: temporarily bump mariadb innodb buffer pool for one host
+$EDITOR .env.mariadb.local
+# MARIADB_INNODB_BUFFER_POOL_SIZE=2G
+
+# Or: per-host PHP-FPM worker count without forking the example
+$EDITOR .env.php.local
+# PHP_PM_MAX_CHILDREN=32
+
+task update                            # picks up the override on container recreate
+```
+
+Use this for site-specific overrides that shouldn't end up in `.env.<svc>`
+(which `task env:init` may bootstrap from the committed template on a
+fresh install). The two-file `env_file:` list is compose-native; missing
+`.local` files are silently skipped (`required: false`).
+
+| Layer | Purpose | Lifecycle |
+|---|---|---|
+| `.env.<svc>.example` | Committed template, sane production defaults | Edit via PR — affects every operator |
+| `.env.<svc>` | Operator's primary config | Bootstrapped from the example by `task env:init`; gitignored |
+| `.env.<svc>.local` | Site-specific overrides (host-specific tuning, debug flags) | Operator-managed, never auto-created; gitignored |
+
 #### How do I run with an external database?
 
 ```bash

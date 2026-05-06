@@ -74,6 +74,15 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
   a host `htpasswd` binary, dropping the `apache2-utils` / `httpd-tools` dependency. Operators
   on a fresh Debian/Alpine host now need only `task` and `docker` — no host openssl, no
   apache utils.
+- **Per-service `.env.<svc>.local` override layer.** Each service's compose `env_file:` block
+  now reads two files — `.env.<svc>` (operator's primary config) and `.env.<svc>.local`
+  (`required: false`, loaded on top, overrides earlier values). Same pattern for
+  `.env.symfony.local`. Use `.local` files for site-specific overrides (host-specific PHP
+  worker count, mariadb buffer pool size, debug flags) without forking the committed
+  `.env.<svc>` template — `task env:init` may bootstrap `.env.<svc>` from the example on a
+  fresh install, so keeping site-specific tuning out of that file makes re-bootstraps clean.
+  All `*.local` files are gitignored. Cookbook recipe: "How do I override env config locally
+  without committing?".
 
 ### Changed (breaking)
 
