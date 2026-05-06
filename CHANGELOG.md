@@ -53,6 +53,12 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
   aggregate) — set-membership comparison of `task --list` against the README block. Section
   headings, descriptions, and alias notes in the README stay human-curated; only the SET of
   task names is checked. Caught the missing `dev:teardown` entry in the existing block.
+- New **`E2E`** workflow on release branches: bootstraps env files via `task env:init`,
+  generates a self-signed cert via `task dev:cert`, brings the full stack up, runs Doctrine
+  migrations, creates a tenant + admin user, and curls `/admin/` over HTTPS via the dev cert.
+  Catches install-path regressions the static checks can't (image boot, migration replay,
+  Traefik routing). Triggers on `pull_request` against `release/**` and pushes to
+  `release/**` — too slow (~5 min wall-clock) for every casual PR.
 - `scripts/` directory: extracted helpers for the longer Taskfile bodies that the upstream
   [Taskfile style guide](https://taskfile.dev/styleguide/) recommends moving out
   ("Prefer using external scripts instead of multi-line commands"). `host-resources.sh`,

@@ -1,0 +1,117 @@
+### ### E2E
+###
+### End-to-end test of the localhost-cert install recipe: bootstrap env
+### files via `task env:init`, generate the self-signed cert via
+### `task dev:cert`, bring the stack up, create a tenant + admin user,
+### and curl the admin route over HTTPS using the generated cert.
+###
+### Triggers on `pull_request` against `release/**` and pushes to
+### `release/**` only — too slow + too much docker churn to run on every
+### casual PR. Acts as the release-cut quality bar that the static
+### `markdown` / `yaml` / `sh` / `compose` / `tasks` workflows can't catch:
+### actual stack boot, Doctrine migrations, JWT keypair generation, and
+### Traefik routing.
+###
+### #### Known fragility points
+###
+### - `APP_ENV=dev` workaround: the upstream display-api-service image's
+###   bundled .env still defaults to `APP_ENV=dev` until a 3.0.0-rc3+ tag
+###   ships the fix from display-api-service#435. We sed it to `prod`
+###   before bringing the stack up. Drop the override once a fixed tag
+###   is in `OS2DISPLAY_VERSION_API`.
+### - `task install` chains `task: <subtask>` calls that don't reliably
+###   pipe stdin to the Symfony console (B23 caveat). The workflow
+###   sidesteps by running the install steps directly via
+###   `docker compose exec`.
+### - GHCR pulls without auth: bot quota, can flake on heavy CI days.
+
+name: E2E
+
+on:
+  pull_request:
+    branches:
+      - "release/**"
+  push:
+    branches:
+      - "release/**"
+
+jobs:
+  install-localhost:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bootstrap env files (domain prompt piped)
+        # `task env:init` prompts for the public domain; pipe the localhost
+        # default. The script also extracts .env.symfony from the API image,
+        # auto-generates APP_SECRET + JWT_PASSPHRASE, and bumps serverVersion.
+        run: printf 'os2display.localhost\n' | task env:init
+
+      - name: APP_ENV=prod workaround (upstream image bug)
+        # The image's bundled .env defaults to APP_ENV=dev but the image is
+        # built --no-dev, so dev-mode boot fails on a missing WebProfilerBundle.
+        # Drop this step once the fix from display-api-service#435 ships
+        # in a 3.0.0-rc3+ tag.
+        run: sed -i 's|^APP_ENV=dev|APP_ENV=prod|' .env.symfony
+
+      - name: Configure traefik (cert-file branch, prompts piped)
+        # Choice 2 = cert-file. Domain = traefik.localhost. LE email
+        # skipped via blank line (cert-file branch ignores it). Cert
+        # filename defaults accepted via blank lines. Dashboard
+        # admin / password.
+        run: |
+          printf '2\ntraefik.localhost\n\n\nadmin\npassword\n' | task env:traefik
+
+      - name: Generate self-signed cert
+        run: task dev:cert
+
+      - name: Bring stack up
+        # `task install`'s chained `task: <subtask>` calls don't pipe
+        # stdin reliably for tenant:add / user:add (B23 caveat), so
+        # we step through manually below. install-secrets.sh
+        # (auto-fills MARIADB_*=CHANGE_ME sentinels) gets called first
+        # to match the real `task install` order.
+        run: |
+          ./scripts/install-secrets.sh
+          docker compose --env-file .env --env-file .env.traefik pull
+          docker compose --env-file .env --env-file .env.traefik up --detach --wait
+
+      - name: Run database migrations
+        run: |
+          docker compose --env-file .env --env-file .env.traefik exec -T os2display \
+            bin/console --no-interaction app:update
+
+      - name: Generate JWT keypair
+        run: |
+          docker compose --env-file .env --env-file .env.traefik exec -T os2display \
+            bin/console lexik:jwt:generate-keypair --skip-if-exists
+
+      - name: Create tenant + admin user
+        run: |
+          docker compose --env-file .env --env-file .env.traefik exec -T os2display \
+            bin/console app:tenant:add e2e 'E2E Tenant' 'CI'
+          docker compose --env-file .env --env-file .env.traefik exec -T os2display \
+            bin/console app:user:add admin@os2display.localhost e2epassword 'E2E Admin' admin e2e
+
+      - name: Smoke test — admin route over HTTPS
+        # --resolve maps os2display.localhost → 127.0.0.1; --cacert trusts
+        # the generated dev cert (covers os2display.localhost as a SAN).
+        # -f makes curl exit non-zero on >=400.
+        run: |
+          curl -fv \
+            --resolve os2display.localhost:443:127.0.0.1 \
+            --cacert traefik/ssl/dev.crt \
+            https://os2display.localhost/admin/ \
+            -o /dev/null
+
+      - name: Tear down
+        if: always()
+        run: |
+          docker compose --env-file .env --env-file .env.traefik down --volumes --remove-orphans
