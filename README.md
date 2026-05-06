@@ -939,7 +939,7 @@ file-copy header at the top of each lints config preserves provenance for sync.
 
 ### CI workflows
 
-`.github/workflows/`, four files:
+`.github/workflows/`, five static checks plus a release-branch e2e:
 
 - **`markdown.yaml`** — runs markdownlint via `docker compose --profile dev run --rm
   markdownlint`. Catches doc rot.
@@ -947,6 +947,9 @@ file-copy header at the top of each lints config preserves provenance for sync.
 - **`sh.yaml`** — runs shellcheck against `scripts/*.sh` via the `shellcheck` dev-profile
   service. Catches shell footguns in the extracted helpers (unquoted vars, masked exit
   codes, etc.).
+- **`tasks.yaml`** — runs `scripts/check-tasks-readme.sh`, asserting the set of task
+  names in the README's "All tasks" reference block matches `task --list`. Section
+  labels, descriptions, and alias notes stay human-curated; only membership is checked.
 - **`compose.yaml`** — three jobs:
   1. `compose-config` — synthesises the stack with example env files + a stub `.env.symfony`.
      Catches typos and dangling `${VAR}` references.
@@ -955,8 +958,15 @@ file-copy header at the top of each lints config preserves provenance for sync.
   3. `env-coverage` — every bare `${VAR}` reference in `docker-compose.yml` is declared in
      `.env.example` or `.env.traefik.example`. Catches the silent-empty
      substitution case.
+- **`e2e.yaml`** — release-branch only (`pull_request` against `release/**`, push to
+  `release/**`). Bootstraps env files via `task env:init`, generates a self-signed cert,
+  brings the full stack up, runs migrations, creates a tenant + admin user, and curls
+  `/admin/` over HTTPS via the cert. Catches install-path regressions the static checks
+  can't (image boot, migration replay, Traefik routing). ~5 minutes wall-clock.
 
-All four trigger on `pull_request` and pushes to `main` / `develop` / `release/**`.
+All static checks trigger on `pull_request` and pushes to `main` / `develop` /
+`release/**`. The e2e workflow runs on release branches only — too slow + too much docker
+churn for the casual review cycle.
 
 ---
 
@@ -968,7 +978,7 @@ All four trigger on `pull_request` and pushes to `main` / `develop` / `release/*
 Lifecycle
   install              Install the project — first-time setup (interactive)
   update               Pull images, recreate containers, run app:update
-  up                   Start the stack without recreating containers
+  up                   Start the stack; blocks until healthchecks pass
   down                 Remove all containers (preserves named volumes)
   stop                 Stop all containers
   purge                Remove all containers AND named volumes  (prompts)

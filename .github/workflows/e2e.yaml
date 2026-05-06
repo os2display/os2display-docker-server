@@ -1,0 +1,124 @@
+### ### E2E
+###
+### End-to-end test of the localhost-cert install recipe, walked
+### through the supplied tasks the same way an operator would: bootstrap
+### env files via `task env:init`, configure traefik via
+### `task env:traefik`, generate a self-signed cert via `task dev:cert`,
+### bring the stack up via `task up`, run migrations + JWT + tenant +
+### admin user via `task console`, install templates via
+### `task templates:install`, and tear down via `task dev:teardown`.
+### Curls `/admin/` over HTTPS using the generated cert as the success
+### gate.
+###
+### Triggers on `pull_request` against `release/**` and pushes to
+### `release/**` only — too slow + too much docker churn to run on every
+### casual PR. Acts as the release-cut quality bar that the static
+### `markdown` / `yaml` / `sh` / `compose` / `tasks` workflows can't catch:
+### actual stack boot, Doctrine migrations, JWT keypair generation, and
+### Traefik routing.
+###
+### #### Known fragility points
+###
+### - **`APP_ENV=dev` upstream image bug**: the bundled `/app/.env` still
+###   defaults to `APP_ENV=dev` until a 3.0.0-rc3+ tag ships the fix
+###   from display-api-service#435. We sed it to `prod` after `task
+###   env:init`. Drop the workaround once a fixed image tag is in
+###   `OS2DISPLAY_VERSION_API`.
+### - **`task install` is interactive**: chained `task: <subtask>` calls
+###   don't reliably pipe stdin to the Symfony console for tenant:add
+###   and user:add (B23 caveat). We walk the install steps individually
+###   via `task console -- ARGS` (which is non-interactive when the
+###   bin/console subcommand accepts CLI args) instead of calling
+###   `task install` directly.
+### - **`scripts/install-secrets.sh` runs as the first step of `task
+###   install`**: not currently a standalone task, so we invoke the
+###   script directly. It's tracked under `scripts/` and shellcheck-
+###   validated; equivalent to running task install's secrets-fill
+###   step in isolation.
+### - **GHCR pulls without auth**: bot quota, can flake on heavy CI days.
+
+name: E2E
+
+on:
+  pull_request:
+    branches:
+      - "release/**"
+  push:
+    branches:
+      - "release/**"
+
+jobs:
+  install-localhost:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: task env:init (domain prompt piped)
+        run: printf 'os2display.localhost\n' | task env:init
+
+      - name: APP_ENV=prod workaround (upstream image bug — see header)
+        run: sed -i 's|^APP_ENV=dev|APP_ENV=prod|' .env.symfony
+
+      - name: task env:traefik (cert-file branch, prompts piped)
+        # Choice 2 = cert-file. Domain = traefik.localhost. LE email blank
+        # (cert-file branch ignores it). Cert filename defaults accepted
+        # via blank lines. Dashboard admin / password.
+        run: printf '2\ntraefik.localhost\n\n\nadmin\npassword\n' | task env:traefik
+
+      - name: task dev:cert
+        run: task dev:cert
+
+      - name: install-secrets (would be `task install`'s first step)
+        run: ./scripts/install-secrets.sh
+
+      - name: Pre-create bind-mount dirs with container-writable perms
+        # The os2display container writes JWT keys as UID 1042 (`deploy`)
+        # per README's deploy-host UID/GID contract, and uploads to
+        # ./media as the same user. CI runners aren't the operator's
+        # 1042-group host, so chown the bind-mount sources to match.
+        run: |
+          mkdir -p jwt media backup
+          sudo chown -R 1042:1042 jwt media backup
+
+      - name: task up
+        # `task up` uses `compose up -d --wait`, so this blocks until every
+        # service's healthcheck passes. Migrations on the next step can
+        # connect immediately.
+        run: task up
+
+      - name: task console -- app:update (Doctrine migrations)
+        run: task console -- --no-interaction app:update
+
+      - name: task console -- lexik:jwt:generate-keypair
+        run: task console -- lexik:jwt:generate-keypair --skip-if-exists
+
+      - name: task console -- app:tenant:add
+        run: task console -- app:tenant:add e2e 'E2E Tenant' CI
+
+      - name: task console -- app:user:add
+        run: task console -- app:user:add admin@os2display.localhost e2epassword 'E2E Admin' admin e2e
+
+      - name: task templates:install
+        run: task templates:install
+
+      - name: Smoke test — admin route over HTTPS
+        # --resolve maps os2display.localhost → 127.0.0.1; --cacert trusts
+        # the generated dev cert (covers os2display.localhost as a SAN).
+        # -f makes curl exit non-zero on >=400.
+        run: |
+          curl -fv \
+            --resolve os2display.localhost:443:127.0.0.1 \
+            --cacert traefik/ssl/dev.crt \
+            https://os2display.localhost/admin/ \
+            -o /dev/null
+
+      - name: task dev:teardown
+        if: always()
+        run: task -y dev:teardown

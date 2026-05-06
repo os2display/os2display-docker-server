@@ -47,6 +47,14 @@ services:
         required: true
       - path: .env.php.local
         required: false
+    depends_on:
+      # mariadb is profile-gated (`mariadb`). `required: false` lets compose
+      # skip this dep when an operator runs against an external database.
+      mariadb:
+        condition: service_healthy
+        required: false
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "php", "-r", "exit(@fsockopen('127.0.0.1', 9000) ? 0 : 1);"]
       interval: 30s
@@ -147,6 +155,12 @@ services:
         required: true
       - path: .env.traefik.local
         required: false
+    depends_on:
+      # Traefik queries the docker socket via socket-proxy for label
+      # discovery; wait for the proxy to pass its /version healthcheck
+      # before traefik starts asking it for routes.
+      socket-proxy:
+        condition: service_healthy
     ports:
       - "80:80"
       - "443:443"

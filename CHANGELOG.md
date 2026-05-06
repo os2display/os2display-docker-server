@@ -53,6 +53,27 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
   aggregate) — set-membership comparison of `task --list` against the README block. Section
   headings, descriptions, and alias notes in the README stay human-curated; only the SET of
   task names is checked. Caught the missing `dev:teardown` entry in the existing block.
+- New **`E2E`** workflow on release branches: bootstraps env files via `task env:init`,
+  generates a self-signed cert via `task dev:cert`, brings the full stack up, runs Doctrine
+  migrations, creates a tenant + admin user, and curls `/admin/` over HTTPS via the dev cert.
+  Catches install-path regressions the static checks can't (image boot, migration replay,
+  Traefik routing). Triggers on `pull_request` against `release/**` and pushes to
+  `release/**` — too slow (~5 min wall-clock) for every casual PR.
+- **`task up` / `install` / `update` now use `compose up --wait`** — blocks until every
+  service's healthcheck passes before returning, instead of returning immediately and
+  leaving the operator to poll. Matches the operator mental-model "after `task up` the
+  stack is up". Replaces `task install`'s previous `sleep 20` hack.
+- **`docker-compose.yml` `depends_on` graph filled in.** B6 added healthchecks to every
+  service but only wired one dependency (`nginx-api → os2display: service_healthy`).
+  Migrations on a fresh install raced the database — `task install` papered over with a
+  20-second sleep. Now:
+  - `os2display` waits for `mariadb` (`service_healthy`, `required: false` so the dep is
+    skipped when an operator runs against an external db / drops the `mariadb` profile)
+    and `redis` (`service_healthy`).
+  - `traefik` waits for `socket-proxy` (`service_healthy`) — traefik queries socket-proxy
+    for docker-label discovery, no point asking before the proxy is reachable.
+  Combined with `--wait` above, `task up` returns when the stack is genuinely ready, with
+  startup ordering enforced at the container level rather than via wall-clock guesswork.
 - `scripts/` directory: extracted helpers for the longer Taskfile bodies that the upstream
   [Taskfile style guide](https://taskfile.dev/styleguide/) recommends moving out
   ("Prefer using external scripts instead of multi-line commands"). `host-resources.sh`,
