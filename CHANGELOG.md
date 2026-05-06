@@ -27,6 +27,19 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
   `./backup/<timestamp>.sql.gz`. Online; no service downtime.
 - `task db:upgrade` — runs `mariadb-upgrade` explicitly. Idempotent, belt-and-suspenders over the
   entrypoint's auto-run on first start with new data.
+- **MariaDB diagnostics tasks** (`db:metrics`, `db:processes`, `db:errors`) for triaging
+  PHP-app-under-load symptoms — connection exhaustion, aborted connects, lock-wait timeouts,
+  slow queries, buffer-pool pressure. `db:metrics` is the operator-eyeball snapshot: pulls
+  `Threads_connected` / `max_connections` / `Max_used_connections` / `Aborted_*` /
+  `Innodb_buffer_pool_*` / `Innodb_row_lock_*` / `Slow_queries` from `SHOW GLOBAL STATUS`
+  and computes the buffer-pool hit ratio. `db:processes` runs `SHOW FULL PROCESSLIST` for
+  "what's running right now". `db:errors` filters the mariadb container's stderr for
+  `Too many connections`, `Aborted connection`, `lock wait timeout exceeded`, `Out of
+  memory`, `[ERROR]`, `[CRITICAL]` over the last hour. Cookbook recipe: "How do I diagnose
+  database performance issues?".
+- Drive-by cleanup of `db:backup` and `db:upgrade`: dropped the inline
+  `grep ^MARIADB_ROOT_PASSWORD= .env.mariadb | cut -d= -f2-` extraction in favour of the
+  dotenv-loaded `$MARIADB_ROOT_PASSWORD` (B23). Both tasks are now ~5 lines shorter.
 - Global JSON-file log rotation via the `x-logging` anchor (10MB × 3 files per service). Applied
   to every service so a runaway container can't fill the host disk. Tunable via
   `LOG_MAX_SIZE` / `LOG_MAX_FILE` in `.env`.

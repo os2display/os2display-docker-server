@@ -192,6 +192,7 @@ Three docker networks:
 - [How do I tune PHP for big imports or long requests?](#how-do-i-tune-php-for-big-imports-or-long-requests)
 - [How do I tune nginx for large uploads?](#how-do-i-tune-nginx-for-large-uploads)
 - [How do I take a database backup?](#how-do-i-take-a-database-backup)
+- [How do I diagnose database performance issues?](#how-do-i-diagnose-database-performance-issues)
 - [How do I restore from a backup?](#how-do-i-restore-from-a-backup)
 - [How do I add a tenant?](#how-do-i-add-a-tenant)
 - [How do I add a user?](#how-do-i-add-a-user)
@@ -420,6 +421,43 @@ ls backup/
 Online dump (`mariadb-dump --single-transaction --quick --routines --triggers --events`),
 gzipped. No service downtime; the `--single-transaction` flag gives a consistent InnoDB
 snapshot. The `backup/` directory has its own `.gitignore` keeping all dumps out of git.
+
+#### How do I diagnose database performance issues?
+
+Three tasks for the typical PHP-app-under-load symptom set — connection exhaustion,
+aborted connects, lock-wait timeouts, slow queries, buffer-pool pressure:
+
+```bash
+task db:metrics      # snapshot of operational counters (connections, locks, buffer pool)
+task db:processes    # SHOW FULL PROCESSLIST — every active connection + its query
+task db:errors       # mariadb stderr filtered for trouble patterns, last hour
+```
+
+`db:metrics` is the first stop. Output looks like:
+
+```text
+Connections
+  Active:        23 / 151 (Threads_connected / max_connections)
+  Peak:          47 (Max_used_connections since startup)
+  Cumulative:    1342 connects, 0 aborted-connects, 3 aborted-clients
+
+InnoDB buffer pool
+  Size:          128 MiB (used 122 MiB)
+  Hit ratio:     99.87 %
+…
+```
+
+If `Active` is approaching `max_connections`, PHP-FPM is opening connections faster than
+they're closing — bump `pm.max_children` down, raise mariadb's `max_connections`, or both.
+If `Hit ratio` is below ~99%, the buffer pool is too small for the working set; raise
+`innodb_buffer_pool_size` via a `command:` override in a compose override file. If
+`InnoDB row locks > Waits` is climbing, run `task db:processes` to find the blocking
+query. Cumulative `aborted-connects` ticks usually mean Doctrine's connection wait timed
+out before the connect handshake finished.
+
+`db:errors` greps the mariadb container's stderr for `Too many connections`, `Aborted
+connection`, `lock wait timeout exceeded`, `Out of memory`, `[ERROR]`, `[CRITICAL]` over
+the last hour. Empty output means clean.
 
 #### How do I restore from a backup?
 
@@ -1003,6 +1041,9 @@ Operations
   templates:install    Install bundled templates + screen layouts(alias: load_templates)
   db:backup            Dump the bundled MariaDB to ./backup/<UTC-ts>.sql.gz
   db:upgrade           Run mariadb-upgrade after a MariaDB major bump
+  db:metrics           Snapshot of MariaDB operational counters (connections, locks, buffer pool)
+  db:processes         SHOW FULL PROCESSLIST — every active connection + its query
+  db:errors            Filter mariadb stderr for trouble patterns (last hour)
 
 Host inspection
   host:resources       Recommend mem_limit values for a dedicated host (Linux only)

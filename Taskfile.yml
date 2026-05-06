@@ -343,17 +343,12 @@ tasks:
     cmds:
       - mkdir -p backup
       - |
-        ROOT_PASSWORD=$(grep ^MARIADB_ROOT_PASSWORD= .env.mariadb | cut -d= -f2-)
-        if [ -z "$ROOT_PASSWORD" ]; then
-          echo "Error: MARIADB_ROOT_PASSWORD is empty in .env.mariadb"
-          exit 1
-        fi
         TS=$(date -u +%Y%m%dT%H%M%SZ)
         OUT="backup/${TS}.sql.gz"
         echo "Dumping all databases to $OUT (--single-transaction, no service downtime)..."
         {{.COMPOSE}} exec -T mariadb mariadb-dump \
           --all-databases --single-transaction --quick --routines --triggers --events \
-          --user=root --password="$ROOT_PASSWORD" \
+          --user=root --password="$MARIADB_ROOT_PASSWORD" \
           | gzip > "$OUT"
         echo "Wrote $OUT ($(du -h "$OUT" | cut -f1))."
 
@@ -363,13 +358,36 @@ tasks:
       - sh: "[ -f .env.mariadb ]"
         msg: ".env.mariadb missing — copy .env.mariadb.example to .env.mariadb first."
     cmds:
-      - |
-        ROOT_PASSWORD=$(grep ^MARIADB_ROOT_PASSWORD= .env.mariadb | cut -d= -f2-)
-        if [ -z "$ROOT_PASSWORD" ]; then
-          echo "Error: MARIADB_ROOT_PASSWORD is empty in .env.mariadb"
-          exit 1
-        fi
-        {{.COMPOSE}} exec -T mariadb mariadb-upgrade --user=root --password="$ROOT_PASSWORD"
+      - "{{.COMPOSE}} exec -T mariadb mariadb-upgrade --user=root --password=$MARIADB_ROOT_PASSWORD"
+
+  db:metrics:
+    desc: |
+      Snapshot of MariaDB operational counters relevant to PHP-app-under-load
+      symptoms: connection counts vs max, aborted connects/clients, InnoDB
+      buffer-pool hit ratio, row-lock contention, slow queries, table opens,
+      uptime. Use during incidents to triage symptoms; pair with `db:processes`
+      for "what's running right now" and `db:errors` for log-side trouble.
+    preconditions:
+      - sh: "[ -f .env.mariadb ]"
+        msg: ".env.mariadb missing — run 'task env:init' first."
+    cmds:
+      - ./scripts/db-metrics.sh
+
+  db:processes:
+    desc: Show MariaDB's full processlist — every active connection + the query each is running
+    preconditions:
+      - sh: "[ -f .env.mariadb ]"
+        msg: ".env.mariadb missing — run 'task env:init' first."
+    cmds:
+      - "{{.COMPOSE}} exec -T mariadb mariadb --user=root --password=$MARIADB_ROOT_PASSWORD -e 'SHOW FULL PROCESSLIST'"
+
+  db:errors:
+    desc: |
+      Filter the mariadb container's stderr for trouble patterns relevant to
+      PHP-under-load: connection exhaustion, aborted connects, lock-wait
+      timeouts, OOM, [ERROR]/[CRITICAL] entries. Defaults to last hour.
+    cmds:
+      - "{{.COMPOSE}} logs --no-color --since=1h mariadb 2>&1 | grep -iE '(too many connections|aborted connection|lock wait timeout|out of memory|got an error|\\[ERROR\\]|\\[CRITICAL\\])' || true"
 
   # -- Dev tooling ------------------------------------------------------------
 
