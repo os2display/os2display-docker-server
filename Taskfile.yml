@@ -376,11 +376,12 @@ tasks:
   # -- Dev tooling ------------------------------------------------------------
 
   dev:lint:
-    desc: Run all linters in check mode (Markdown + YAML + Shell)
+    desc: Run all linters in check mode (Markdown + YAML + Shell + Tasks)
     deps:
       - dev:lint:md
       - dev:lint:yaml
       - dev:lint:sh
+      - dev:lint:tasks
 
   dev:lint:fix:
     desc: Auto-fix all lint issues (Markdown + YAML; shellcheck has no fix mode)
@@ -412,6 +413,14 @@ tasks:
     desc: Lint shell scripts in scripts/ via shellcheck (read-only; no auto-fix)
     cmds:
       - docker compose --profile dev run --rm shellcheck scripts/*.sh
+
+  dev:lint:tasks:
+    desc: |
+      Assert the README's "All tasks" reference block lists every task
+      `task --list` exposes (and vice versa). Set membership only —
+      sectioning, descriptions, and ordering stay human-curated.
+    cmds:
+      - ./scripts/check-tasks-readme.sh
 
   dev:cert:
     desc: |
