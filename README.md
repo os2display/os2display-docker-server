@@ -258,8 +258,14 @@ See [Quick start](#quick-start-fresh-install).
 
 #### How do I upgrade the os2display api + nginx images?
 
+> [!IMPORTANT]
+> Always run `task db:backup` before `task update`. The `app:update` step applies Doctrine
+> migrations that may include `DROP COLUMN`, type changes, or data transforms — none of which
+> are reversed by reverting `OS2DISPLAY_VERSION_API`. Rollback is "restore from backup, then
+> revert the tag", not a clean tag swap.
+
 ```bash
-task db:backup                     # ALWAYS before task update — see Caveats
+task db:backup                     # before every task update
 $EDITOR .env                       # bump OS2DISPLAY_VERSION_API
 task update                        # pull, recreate, run app:update (migrations + cache:warmup)
 task env:diff                      # check whether the new image added Symfony env keys
@@ -267,13 +273,9 @@ task env:diff                      # check whether the new image added Symfony e
 ```
 
 `task update` pulls fresh images, recreates the containers (preserving named volumes), and runs
-`bin/console app:update`. Image swaps and container recreation themselves don't touch data.
-What does is `app:update` — it applies Doctrine schema migrations from the new image. Some of
-those migrations include `DROP COLUMN`, type changes, or data transforms that **aren't
-reversible** by running an older image's `app:update` against the upgraded schema. Rolling
-back from a botched upgrade is "restore from `task db:backup` first, then revert
-`OS2DISPLAY_VERSION_API` and `task up`", not a clean tag swap. See
-[Caveats](#caveats-and-foot-guns).
+`bin/console app:update`. Image swaps and container recreation themselves don't touch data —
+the schema rewrite happens inside `app:update`. See
+[Caveats](#caveats-and-foot-guns) for the full reasoning.
 
 #### How do I upgrade the bundled MariaDB across a major version?
 
@@ -301,9 +303,12 @@ task up                            # picks up the new SERVER_CERT_PROVIDER
 Encrypt resolver — Traefik picks certs from the file provider via SNI matching against the
 hostnames in your cert.
 
-**The cert must cover every host the stack serves** — both `OS2DISPLAY_SERVER_DOMAIN` and the
-Traefik dashboard `SERVER_DOMAIN`. A wildcard cert (`*.example.com`) is the simplest path. See
-[Caveats](#caveats-and-foot-guns).
+> [!IMPORTANT]
+> The cert must cover **every** host the stack serves — both `OS2DISPLAY_SERVER_DOMAIN` and the
+> Traefik dashboard `SERVER_DOMAIN`. A wildcard (`*.example.com`) is the simplest path. Without
+> SAN coverage for the dashboard host, Traefik falls back to the file provider's default cert
+> (whichever you declared first), and the dashboard hits a TLS error. See
+> [Caveats](#caveats-and-foot-guns).
 
 #### How do I run the stack on localhost without a public domain?
 
@@ -506,14 +511,16 @@ the last hour. Empty output means clean.
 
 #### How do I restore from a backup?
 
+> [!CAUTION]
+> Piping a dump into a populated database overwrites rows in place — there's no confirmation
+> prompt, no dry-run. Make sure the target is the database you intend to overwrite before
+> running the command. To restore into a clean DB instead, `task purge` first (also destructive
+> — wipes all data and volumes) and re-run `task install` before piping in the dump.
+
 ```bash
 gunzip < backup/20260505T140723Z.sql.gz \
   | docker compose exec -T mariadb mariadb -u root -p"$(grep ^MARIADB_ROOT_PASSWORD= .env.mariadb | cut -d= -f2-)"
 ```
-
-Restoring **into** an existing populated database overwrites by default. To restore into a fresh
-DB, `task purge` first (destructive — wipes all data and volumes) and re-run `task install`,
-then pipe in the dump.
 
 #### How do I add a tenant?
 
@@ -619,10 +626,15 @@ committed.
 
 #### How do I tune PHP-FPM for the os2display container's memory limit?
 
+> [!IMPORTANT]
+> If you set a `mem_limit` on the os2display container without re-tuning PHP-FPM,
+> `pm.max_children` will spawn workers past the cgroup ceiling and the container OOM-kills
+> itself under load. Always re-run this recipe after the first time you set or change a memory
+> limit (via `host:resources` or hand-edit), not just during initial setup.
+
 Once `host:resources` (or a hand-set `mem_limit`) caps the os2display container at, say, 256 MiB,
 PHP-FPM's `pm.max_children`, OPcache memory, and the spare-worker thresholds need to fit
-inside that ceiling. Otherwise PHP-FPM will spawn beyond the cgroup memory limit and
-containers OOM-kill themselves under load.
+inside that ceiling.
 
 ```bash
 task host:php -- 256                         # tight ceiling: 2 workers
@@ -703,8 +715,14 @@ anchor in `docker-compose.yml`; defaults give ~30 MiB per container, ~210 MiB to
 
 To change the policy, edit `LOG_MAX_SIZE` / `LOG_MAX_FILE` in `.env` (e.g. `LOG_MAX_SIZE=50m`
 for noisy debugging on a bigger host, or `LOG_MAX_SIZE=2m` on a small one), then run
-`task update`. A plain `task up` won't pick up new logging options — docker only applies them
-on container creation, which `update`'s `--force-recreate` triggers.
+`task update`.
+
+> [!NOTE]
+> A plain `task up` will **not** pick up new `LOG_MAX_*` values. Docker only applies log-driver
+> options on container creation, so the change requires `--force-recreate` (which `task update`
+> does, but `task up` doesn't). Symptom: edits look applied (`docker inspect` shows the new
+> values on the next recreate) but the running container's old retention policy stays in
+> effect until then.
 
 The task itself reads sizes via a transient `alpine` container with a read-only `/var/lib/docker`
 mount, since docker's json log files are root-owned on the host. Linux only.
@@ -840,6 +858,33 @@ The checked-in `.env.<X>.example` files are templates, intentionally producing s
 secret defaults. Your operator edits go into `.env.<service>` (gitignored). Editing the
 templates means future `task install` invocations bootstrap your custom values into other
 operators' checkouts, and `git status` is permanently dirty.
+
+#### `.env.local.php` does not reflect your operator config
+
+The upstream image's entrypoint runs `composer dump-env prod` then `bin/console cache:warmup`
+before exec'ing php-fpm. `dump-env` only reads the bundled `/app/.env*` files — it does **not**
+capture process-environment values set by compose `env_file:` (`.env.symfony`,
+`.env.mariadb`, …). So `/app/.env.local.php` inside a running container shows the image's
+shipped defaults (`APP_SECRET=CHANGE_ME`, the placeholder `DATABASE_URL`, etc.), not the values
+you actually configured.
+
+This is fine in practice — Symfony's documented precedence is "real environment variables
+always win over `.env*` files", and `.env.local.php` is just a fast-path replacement for
+parsing those files. The env_file values still override at request time, and `cache:warmup`
+compiles `%env(FOO)%` placeholders that are resolved at request time, not bake-time. Two
+implications worth knowing:
+
+- **Inspecting `.env.local.php` is misleading** — to see what Symfony actually resolves, run
+  `task console -- debug:dotenv` (its "Value" column is the effective resolved value) or
+  `getenv()` from inside the container.
+- **`composer dump-env` runs once at container start.** If you change `.env.symfony` and want
+  the new values active, restart the container (`docker compose restart os2display` /
+  `task update`). Editing `/app/.env` by hand inside an already-running container does
+  *nothing* until the next restart re-runs `dump-env`.
+
+If you ever explicitly want to suppress a `.env.local.php` value (say a sentinel that's leaking
+through because your env_file omits the key), set `KEY=` (empty) in `.env.symfony` rather than
+omitting the line — Symfony's "real env wins" rule only kicks in when the variable is set.
 
 ### Migrating from an older release
 
