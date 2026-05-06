@@ -1,0 +1,38 @@
+### ### Tasks
+###
+### Asserts that every task `task --list` exposes is listed in the README's
+### "All tasks" reference block (and vice versa). Set membership only —
+### the README block's sectioning, curated descriptions, and alias notes
+### stay human-managed.
+###
+### #### Assumptions
+###
+### 1. `task` is installable from arduino/setup-task on GitHub-hosted
+###    runners (it provides `task` v3.x).
+### 2. `scripts/check-tasks-readme.sh` does the actual diff; this workflow
+###    just runs it.
+
+name: Tasks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - develop
+      - "release/**"
+
+jobs:
+  tasks-readme-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Assert task --list and README "All tasks" block agree
+        run: ./scripts/check-tasks-readme.sh

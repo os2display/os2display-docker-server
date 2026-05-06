@@ -1008,7 +1008,9 @@ Dev tooling
   dev:lint:yaml        Check YAML only (Prettier --check)
   dev:lint:yaml:fix    Auto-fix YAML (Prettier --write)
   dev:lint:sh          Lint scripts/*.sh via shellcheck (no fix mode)
+  dev:lint:tasks       Assert task --list and README's "All tasks" agree
   dev:cert             Generate a self-signed cert for local-host development
+  dev:teardown         Tear down dev stack: containers + volumes + dev cert (prompts)
 ```
 
 `task --list` shows the canonical list with aliases. Internal helper tasks

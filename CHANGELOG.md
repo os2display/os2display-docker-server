@@ -45,8 +45,14 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
   services). Configs adopted from
   [itk-dev/devops_itkdev-docker](https://github.com/itk-dev/devops_itkdev-docker).
 - GitHub Actions workflows: `Markdown`, `YAML`, `Shell`, `Compose` (synthesis +
-  image-availability + env-coverage). Pre-merge gates that catch dangling `${VAR}` references,
-  missing image tags, lint regressions, and shell footguns.
+  image-availability + env-coverage), and `Tasks` (asserts the README's "All tasks" reference
+  block lists the same task names `task --list` exposes). Pre-merge gates that catch dangling
+  `${VAR}` references, missing image tags, lint regressions, shell footguns, and README/Taskfile
+  drift.
+- New **`task dev:lint:tasks`** + `scripts/check-tasks-readme.sh` (folded into the `dev:lint`
+  aggregate) — set-membership comparison of `task --list` against the README block. Section
+  headings, descriptions, and alias notes in the README stay human-curated; only the SET of
+  task names is checked. Caught the missing `dev:teardown` entry in the existing block.
 - `scripts/` directory: extracted helpers for the longer Taskfile bodies that the upstream
   [Taskfile style guide](https://taskfile.dev/styleguide/) recommends moving out
   ("Prefer using external scripts instead of multi-line commands"). `host-resources.sh`,
