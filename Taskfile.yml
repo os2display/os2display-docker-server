@@ -402,6 +402,14 @@ tasks:
     cmds:
       - docker compose --profile dev run --rm shellcheck scripts/*.sh
 
+  dev:cert:
+    desc: |
+      Generate a self-signed certificate for local-host development. Writes
+      traefik/ssl/dev.{crt,key}. Configure cert-file mode in .env.traefik
+      afterwards (printed on success). Set FORCE=1 to overwrite.
+    cmds:
+      - ./scripts/dev-cert.sh
+
   # -- Internal ---------------------------------------------------------------
 
   show-notes:

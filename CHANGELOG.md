@@ -53,6 +53,12 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
   `set -euo pipefail` and are linted by `shellcheck` via the `shellcheck` dev-profile service
   and the new `task dev:lint:sh` / `Shell` CI workflow. Borderline tasks (`host:disk`,
   `db:backup`, `env:init`, etc.) stay inline.
+- `task dev:cert` — generates a self-signed certificate at `traefik/ssl/dev.{crt,key}` for
+  local-host development with `SERVER_CERT_PROVIDER=cert-file`. Wraps an `openssl req -x509`
+  invocation in a transient `alpine/openssl` container (no host openssl needed); SANs cover
+  `OS2DISPLAY_SERVER_DOMAIN`, `SERVER_DOMAIN`, `localhost`, and `127.0.0.1`, defaulting to
+  `*.localhost` when env files haven't been bootstrapped. `FORCE=1` to overwrite. Cookbook
+  recipe: "How do I run the stack on localhost without a public domain?".
 
 ### Changed (breaking)
 
