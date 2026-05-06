@@ -127,6 +127,17 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
   in the "Network topology" section visualising the three docker networks (`frontend`, `app`,
   `proxy`), the request flow (Internet → Traefik → nginx-api → os2display → MariaDB / Redis),
   and the read-only `socket-proxy` boundary that brokers Traefik's docker socket access.
+- README caveat: `.env.local.php` does not reflect operator config. Documents that the upstream
+  image's entrypoint runs `composer dump-env prod` against the bundled `/app/.env*` files only
+  (image defaults like `APP_SECRET=CHANGE_ME`), and that compose `env_file:` values override the
+  dump at runtime per Symfony's "real env wins" rule — so the file is misleading to inspect.
+  Includes the `task console -- debug:dotenv` recommendation and the "restart to re-dump" /
+  empty-value-as-explicit-suppress gotchas.
+- README cookbook: GitHub-style alert callouts (`> [!IMPORTANT]`, `> [!CAUTION]`, `> [!NOTE]`)
+  on five recipes where the consequence is non-obvious or destructive — upgrade-without-backup,
+  cert-file SAN coverage, restore-overwrites-in-place, PHP-FPM-OOM-without-retune, and
+  `LOG_MAX_*` not picked up by `task up`. Caveats section is unchanged (it's a callout in its
+  own right; layering alerts inside would add visual noise).
 
 ### Changed (breaking)
 
