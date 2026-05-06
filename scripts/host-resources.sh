@@ -1,25 +1,30 @@
 #!/usr/bin/env bash
 #
-# Linux-only. Print a recommended compose override with mem_limit values for
-# every service, derived from the host's CPU + RAM. Header goes to stderr so
-# stdout is pure YAML and capturable.
+# Print a recommended compose override with mem_limit values for every
+# service, derived from the host's CPU + RAM as the docker daemon sees it.
+# Header goes to stderr so stdout is pure YAML and capturable.
 #
 # Usage: scripts/host-resources.sh           (stdout: YAML; stderr: header)
 #        scripts/host-resources.sh > compose.resource-limits.yml
+#
+# Cross-platform: reads `docker info` rather than /proc/meminfo + nproc, so
+# this works on Linux deploy targets, macOS Docker Desktop, and Docker
+# Desktop on Windows / WSL2. On Desktop the values reflect the VM's
+# allocation rather than the physical host — which is correct, since the
+# containers can't escape the VM anyway.
 #
 # Assumes a DEDICATED host. Operators on shared hosts should hand-edit the
 # output before enabling it in COMPOSE_FILE.
 
 set -euo pipefail
 
-if [ ! -r /proc/meminfo ]; then
-  echo "Error: /proc/meminfo not readable. host:resources requires a Linux host." >&2
+TOTAL_MEM_BYTES=$(docker info --format '{{.MemTotal}}' 2>/dev/null || true)
+TOTAL_CPU=$(docker info --format '{{.NCPU}}' 2>/dev/null || true)
+if [ -z "$TOTAL_MEM_BYTES" ] || [ "$TOTAL_MEM_BYTES" = "0" ]; then
+  echo "Error: 'docker info' did not return a host memory total — is the docker daemon reachable?" >&2
   exit 1
 fi
-
-TOTAL_MEM_KB=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
-TOTAL_MEM_MB=$((TOTAL_MEM_KB / 1024))
-TOTAL_CPU=$(nproc)
+TOTAL_MEM_MB=$((TOTAL_MEM_BYTES / 1024 / 1024))
 
 # Fixed-size service ceilings (bounded workloads).
 OS_RESERVE_MB=512
