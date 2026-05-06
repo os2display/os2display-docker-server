@@ -36,14 +36,21 @@ echo
 # Generate htpasswd entry (username:hash).
 HTPASSWD_RAW=$(htpasswd -nb "${SERVER_DASHBOARD_USERNAME}" "${SERVER_DASHBOARD_PASSWORD}")
 
-# Escape characters that break sed/env ($, /, &).
+# Escape so the value survives both sed substitution and docker compose
+# variable interpolation. `/` and `&` are sed-replacement special chars;
+# each `$` must become `$$` because compose treats `$$` in env-file values
+# as a literal `$` (otherwise `$apr1$...` from htpasswd is read as the
+# env var `apr1` etc. and substituted to empty).
 HTPASSWD_ESCAPED=$(printf '%s\n' "$HTPASSWD_RAW" \
-  | sed -e 's/[\/&]/\\&/g' -e 's/\$/\\$/g')
+  | sed -e 's/[\/&]/\\&/g' -e 's/\$/$$/g')
 
-# Update variables in .env.traefik.
-sed -i "s/^SERVER_DOMAIN=.*/SERVER_DOMAIN=${SERVER_DOMAIN}/" .env.traefik
-sed -i "s/^TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL=.*/TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL=${TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL}/" .env.traefik
-sed -i "s/^SERVER_DASHBOARD_AUTH=.*/SERVER_DASHBOARD_AUTH=${HTPASSWD_ESCAPED}/" .env.traefik
+# Update variables in .env.traefik. `-i.bak` is portable across BSD sed
+# (macOS) and GNU sed (Linux); both create the backup, both ignore the
+# empty extension on rewrite. We delete the backup explicitly afterwards.
+sed -i.bak "s/^SERVER_DOMAIN=.*/SERVER_DOMAIN=${SERVER_DOMAIN}/" .env.traefik
+sed -i.bak "s/^TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL=.*/TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL=${TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL}/" .env.traefik
+sed -i.bak "s/^SERVER_DASHBOARD_AUTH=.*/SERVER_DASHBOARD_AUTH=${HTPASSWD_ESCAPED}/" .env.traefik
+rm -f .env.traefik.bak
 
 echo "===================================================="
 echo ".env.traefik has been updated."

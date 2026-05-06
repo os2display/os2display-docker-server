@@ -199,13 +199,19 @@ services:
     # a non-root user by default. Keeps the privilege footprint minimal even
     # before security_opt below.
     #
-    # Hardening: read_only: true + tmpfs: [/run] removes the container's
-    # writable layer except for /run (in-memory, scoped to the container
-    # lifecycle). Mitigates a class of attacks where a compromised proxy
-    # mutates its own filesystem to widen the API surface it allows through.
+    # Hardening: read_only: true + tmpfs: [/run, /tmp] removes the
+    # container's writable layer except for two in-memory mounts scoped to
+    # the container lifecycle. Mitigates a class of attacks where a
+    # compromised proxy mutates its own filesystem to widen the API
+    # surface it allows through.
+    #
+    # /tmp is needed because the upstream image's entrypoint generates
+    # /tmp/haproxy.cfg from a template via envsubst at start; without a
+    # writable /tmp the container restarts forever.
     read_only: true
     tmpfs:
       - /run
+      - /tmp
     # Hardening: blocks setuid/setgid escalation regardless of how the image
     # is built. Defense in depth alongside the read-only filesystem.
     security_opt:

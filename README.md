@@ -243,7 +243,9 @@ For local-host development without a real DNS name or Let's Encrypt:
    dependency. `FORCE=1 task dev:cert` to regenerate.
 
 3. `task install` and visit `https://os2display.localhost/admin`. The browser shows an
-   "untrusted CA" warning the first time — accept it.
+   "untrusted CA" warning the first time — accept it (or trust `traefik/ssl/dev.crt` in your
+   system keychain to skip the prompt; macOS `security add-trusted-cert -k
+   ~/Library/Keychains/login.keychain-db traefik/ssl/dev.crt`).
 
 **Caveats.** If you've previously run a real-cert stack on the same domain, the browser's
 HSTS cache may refuse the self-signed cert. Use a fresh `.localhost` name to avoid this. The

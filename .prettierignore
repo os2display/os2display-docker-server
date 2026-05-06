@@ -1,3 +1,6 @@
 # Operator-managed Traefik dynamic config — preserve formatting decided by hand
 traefik/letsencrypt/
 backup/
+
+# Playwright MCP test artifacts (gitignored; not formatted)
+.playwright-mcp/
