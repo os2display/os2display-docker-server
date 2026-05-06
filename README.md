@@ -39,21 +39,28 @@ no build step, no shell-script glue beyond the Taskfile.
 
 **Host.**
 
-- Linux host (BSDs untested; the Taskfile uses `sed -i` GNU-style and `mariadb-dump` from the
-  Linux mariadb image).
+- **Production deploy target: Linux.** All testing assumes a Linux deploy host; BSDs untested.
+  `task db:backup` uses `mariadb-dump` from the Linux mariadb image.
+- **Local dev: Linux, macOS, Windows-WSL2.** All Taskfile-driven workflows (`task env:init`,
+  `task env:traefik`, `task dev:cert`, `task install`, `task host:resources`, etc.) run their
+  shell logic inside transient docker containers, so they're cross-platform on any host with a
+  reachable docker daemon. Docker Desktop (macOS / Windows) and Docker Engine on Linux both work.
 - Docker Engine 20.10+ with Compose v2 (the integrated `docker compose` command, not the
   legacy `docker-compose` Python wrapper).
 - [Task](https://taskfile.dev/#/installation) v3+.
-- A host user with **UID 1042 / GID 1042** — the os2display container writes media and reads JWT
-  keys as `deploy` (UID 1042). Installing as a host user with the same UID prevents bind-mount
-  permission surprises. The `nginx-api` container reads `./media` as UID 101 (`nginx-unprivileged`),
-  so `./media` must be group-readable as well.
+- A host user with **UID 1042 / GID 1042** (Linux deploy only) — the os2display container writes
+  media and reads JWT keys as `deploy` (UID 1042). Installing as a host user with the same UID
+  prevents bind-mount permission surprises. The `nginx-api` container reads `./media` as UID 101
+  (`nginx-unprivileged`), so `./media` must be group-readable as well.
 
   ```bash
   sudo groupadd -g 1042 deploy
   sudo useradd -u 1042 -g 1042 -m -s /bin/bash deploy
   sudo usermod -aG docker deploy
   ```
+
+  On macOS / Windows-WSL2 dev hosts the bind-mount UID contract is irrelevant — Docker Desktop
+  brokers ownership at the VM boundary.
 
 **Network and DNS.**
 

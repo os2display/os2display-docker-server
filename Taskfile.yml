@@ -279,25 +279,33 @@ tasks:
       - ./scripts/host-php.sh {{.CLI_ARGS}}
 
   host:disk:
-    desc: Show stack disk usage (bind mounts + named volumes) vs host disk available
+    desc: Show stack disk usage (bind mounts + named volumes) plus host + docker totals
     cmds:
       - |
-        echo "Bind mounts:"
+        echo "Bind mounts (host filesystem):"
         for path in ./media ./jwt ./backup; do
           if [ -d "$path" ]; then
             printf "  %-12s %s\n" "$path" "$(du -sh "$path" 2>/dev/null | cut -f1)"
           fi
         done
         echo
-        echo "Named volumes:"
+        echo "Named volumes (docker-managed):"
         PROJECT="${COMPOSE_PROJECT_NAME:-os2display}"
         docker system df -v 2>/dev/null \
           | awk -v p="^${PROJECT}_(mariadb|redis-data)" '$1 ~ p {printf "  %-30s %s\n", $1, $3}'
         echo
-        echo "Host filesystem (project mount point):"
+        echo "Host filesystem (project mount point — covers bind mounts):"
         df -h . | tail -1 | awk '{
           printf "  Total: %s   Used: %s   Available: %s   (%s used)\n", $2, $3, $4, $5
         }'
+        echo
+        # Docker-managed total (images + containers + volumes + build cache).
+        # Same partition as the host on Linux; separately-allocated VM disk
+        # on Docker Desktop (often the surprising bottleneck for named-volume
+        # growth, default 60 GB on Mac).
+        echo "Docker-managed storage (images + containers + volumes + build cache):"
+        docker system df 2>/dev/null \
+          | awk 'NR==1 || /^Images|^Containers|^Local Volumes|^Build Cache/ {printf "  %s\n", $0}'
 
   host:disk:tenants:
     desc: |
