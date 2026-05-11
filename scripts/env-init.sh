@@ -25,10 +25,14 @@
 set -euo pipefail
 
 # .env first — it's the gate to OS2DISPLAY_VERSION_API which we need for
-# the API image pull.
+# the API image pull. DOMAIN can be pre-set in the environment to skip the
+# prompt (used by `task dev:env` to bootstrap non-interactively with
+# os2display.localhost).
 if [ ! -f .env ]; then
-  printf "Public domain to serve [os2display.localhost]: "
-  read -r DOMAIN
+  if [ -z "${DOMAIN:-}" ]; then
+    printf "Public domain to serve [os2display.localhost]: "
+    read -r DOMAIN
+  fi
   DOMAIN="${DOMAIN:-os2display.localhost}"
 
   cp .env.example .env

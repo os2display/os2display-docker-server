@@ -459,6 +459,27 @@ tasks:
     cmds:
       - ./scripts/dev-cert.sh
 
+  dev:env:
+    desc: |
+      Bootstrap env files for localhost dev — non-interactive counterpart
+      to `task env:init` + `task env:traefik`. Sets
+      OS2DISPLAY_SERVER_DOMAIN=os2display.localhost and configures
+      .env.traefik for cert-file mode with admin/admin dashboard auth
+      (override via DEV_DASHBOARD_PASSWORD=... or DEV_DASHBOARD_USER=...,
+      domains via DOMAIN=... DASH_DOMAIN=...). NOT FOR PRODUCTION.
+    cmds:
+      - ./scripts/dev-env.sh
+
+  dev:install:
+    desc: |
+      Localhost dev quick start — `task dev:env`, `task dev:cert`,
+      `task install` chained. Non-interactive through cert generation;
+      `task install` still prompts for the initial tenant + admin user.
+    cmds:
+      - task: dev:env
+      - task: dev:cert
+      - task: install
+
   dev:teardown:
     desc: |
       Tear down the dev stack: removes containers + named volumes (mariadb,
