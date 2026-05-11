@@ -22,9 +22,19 @@ CERT_DIR="traefik/ssl"
 CERT_FILE="$CERT_DIR/dev.crt"
 KEY_FILE="$CERT_DIR/dev.key"
 
-# OS2DISPLAY_SERVER_DOMAIN (.env) and SERVER_DOMAIN (.env.traefik) both
-# come from Taskfile's `dotenv:` directive. Defaults kick in when env
-# files aren't bootstrapped yet (e.g. fresh checkout, before `task env:init`).
+# Re-source env files defensively. Task's `dotenv:` snapshots .env /
+# .env.traefik when the runner starts; chained tasks that mutate those
+# files (e.g. `dev:install` → `dev:env` → `dev:cert`) would otherwise
+# leave the runner's exported env stale and we'd generate a cert with
+# the OLD domains. Sourcing here guarantees fresh values regardless of
+# caller. Defaults still kick in when env files aren't bootstrapped yet.
+set -a
+# shellcheck disable=SC1091
+[ -f .env ]         && . ./.env
+# shellcheck disable=SC1091
+[ -f .env.traefik ] && . ./.env.traefik
+set +a
+
 APP_DOMAIN="${OS2DISPLAY_SERVER_DOMAIN:-os2display.localhost}"
 DASH_DOMAIN="${SERVER_DOMAIN:-traefik.localhost}"
 

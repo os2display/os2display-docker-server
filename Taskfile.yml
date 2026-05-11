@@ -25,8 +25,13 @@ tasks:
     preconditions:
       - sh: "[ -f .env.symfony ]"
         msg: ".env.symfony missing — run 'task env:init' first to bootstrap all env files."
-      - sh: '[ "${SERVER_DASHBOARD_AUTH:-}" != "CHANGE_ME" ]'
-        msg: "Traefik dashboard auth not set — run 'task env:traefik' first (or set SERVER_DASHBOARD_AUTH manually in .env.traefik)."
+      # File-truth instead of env-snapshot: Task's `dotenv:` loads
+      # .env.traefik once at startup and won't override the var if it
+      # was already exported (godotenv preserves existing env). Chained
+      # callers like `task dev:install` mutate .env.traefik mid-run, so
+      # checking the file directly is the only reliable gate.
+      - sh: '[ -f .env.traefik ] && ! grep -qE "^SERVER_DASHBOARD_AUTH=CHANGE_ME$" .env.traefik'
+        msg: "Traefik dashboard auth not set — run 'task env:traefik' (or 'task dev:env' for localhost dev) first."
     cmds:
       - echo "Installing"
       - ./scripts/install-secrets.sh
@@ -476,9 +481,16 @@ tasks:
       `task install` chained. Non-interactive through cert generation;
       `task install` still prompts for the initial tenant + admin user.
     cmds:
-      - task: dev:env
-      - task: dev:cert
-      - task: install
+      # Each step is a fresh `task` subprocess so dotenv reloads between
+      # them — `dev:env` mutates .env.traefik, and `dev:cert` + the
+      # `install` precondition need to see the new values, not the
+      # snapshot Task loaded when `dev:install` started. (Chained
+      # `task: <name>` references run in the same process and inherit
+      # the stale env.) FORCE=1 on dev:cert regenerates the cert so its
+      # SANs match the domains dev:env just wrote.
+      - task dev:env
+      - FORCE=1 task dev:cert
+      - task install
 
   dev:teardown:
     desc: |
