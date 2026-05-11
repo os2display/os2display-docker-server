@@ -8,9 +8,12 @@
 #     not already present (idempotent — operator-edited files are kept).
 #   - .env.symfony: extracted from /app/.env in the pinned API image, with
 #     APP_SECRET + JWT_PASSPHRASE replaced by random 32-byte hex and
-#     DATABASE_URL serverVersion bumped to match the mariadb image pinned
-#     in docker-compose.yml (otherwise the bundled value drifts behind the
-#     stack and Doctrine picks the wrong SQL dialect).
+#     the Doctrine `serverVersion` aligned to the mariadb image pinned in
+#     docker-compose.yml — both the literal `serverVersion=…-MariaDB`
+#     value (older images) and the `MARIADB_VERSION=…-MariaDB` template
+#     variable rc3+ uses inside DATABASE_URL. Either way, the bundled
+#     value can't drift behind the stack and Doctrine picks the right
+#     SQL dialect.
 #
 # This is the single bootstrap entry point. `task install` / `task up` /
 # `task update` precondition on `.env.symfony` existing — running this is
@@ -89,6 +92,7 @@ sed -i.bak \
   -e "s|^APP_SECRET=.*|APP_SECRET=${APP_SECRET}|" \
   -e "s|^JWT_PASSPHRASE=.*|JWT_PASSPHRASE=${JWT_PASS}|" \
   -e "s|serverVersion=[0-9.]*-MariaDB|serverVersion=${MARIADB_TAG}-MariaDB|" \
+  -e "s|^MARIADB_VERSION=[0-9.]*-MariaDB|MARIADB_VERSION=${MARIADB_TAG}-MariaDB|" \
   .env.symfony
 rm -f .env.symfony.bak
 

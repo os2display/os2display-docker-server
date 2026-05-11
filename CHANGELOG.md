@@ -363,6 +363,31 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
   CI workflows still call docker compose directly (no Task dependency on runners); the Task
   wrappers are local-dev convenience.
 
+### Changed — image pin bumped to `3.0.0-rc3`
+
+- Image-tag pin bumped from `3.0.0-rc2` to `3.0.0-rc3`. The bundled
+  `/app/.env` now defaults `APP_ENV=prod` (was `dev`), unblocking
+  `task install` + `task dev:install` against the stock image —
+  previously `bin/console app:update` crashed on a missing
+  `WebProfilerBundle` because the production image build doesn't include
+  dev composer deps. Fix from upstream
+  [display-api-service#435](https://github.com/os2display/display-api-service/pull/435).
+  The matching E2E-workflow workaround (`sed APP_ENV=dev → prod`) is
+  removed.
+- New upstream env knobs surfaced via `task env:diff`:
+  - `MARIADB_VERSION` — templates `DATABASE_URL`'s `serverVersion`
+    parameter (was a hard-coded `10.11.5-MariaDB` literal in rc2).
+    `scripts/env-init.sh` now rewrites this line too, so the value
+    tracks the `mariadb:11.4.x` pin in `docker-compose.yml` — same
+    intent as the existing `serverVersion=` sed, applied to the new
+    shape.
+  - `SESSION_HANDLER_DSN` — defaults to `${REDIS_CACHE_DSN}`, so
+    sessions land in Redis with an `sf_s` key prefix instead of PHP's
+    flock-based file handler. Empty value falls back to file sessions.
+  - `ADMIN_LOGIN_SCREEN_TEXT` — optional HTML block in the admin login
+    sidebar (allowed tags: strong/em/b/i/br/p/a/span; allowed attrs:
+    href/title/target/rel/class). Empty hides the card entirely.
+
 ### Changed — image WORKDIR restored to `/app`
 
 - Image-tag pin bumped from `3.0.0-rc1` to `3.0.0-rc2`. Upstream
