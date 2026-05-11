@@ -120,6 +120,23 @@ After `task install` returns, the API + bundled admin UI + screen client are rea
 `https://<your-domain>/`, `/admin/`, `/client/`. The Traefik dashboard is at
 `https://<traefik-host>/traefik/dashboard/` (basic-auth-gated).
 
+**Localhost dev quick start.** For a dev machine without a public DNS name or
+Let's Encrypt, replace the three steps above with one of:
+
+```bash
+task dev:install                   # one-shot: dev:env + dev:cert + install
+# or, granular:
+task dev:env                       # env files + .env.traefik for cert-file (no prompts)
+task dev:cert                      # self-signed cert at traefik/ssl/dev.{crt,key}
+task install                       # interactive tenant + admin user
+```
+
+`task dev:env` configures `os2display.localhost` + `traefik.localhost` with a
+fixed `admin` / `admin` dashboard password (override via
+`DEV_DASHBOARD_PASSWORD=…`). Not for production. See cookbook entry
+[How do I run the stack on localhost without a public domain?](#how-do-i-run-the-stack-on-localhost-without-a-public-domain)
+for the underlying recipe these tasks automate.
+
 ### Configuration files
 
 Each service reads its own env file. The checked-in `.env.<X>.example` files are the canonical
@@ -312,7 +329,15 @@ hostnames in your cert.
 
 #### How do I run the stack on localhost without a public domain?
 
-For local-host development without a real DNS name or Let's Encrypt:
+For local-host development without a real DNS name or Let's Encrypt.
+
+**Shortcut.** `task dev:install` runs the recipe below end-to-end:
+bootstraps the env files for `*.localhost`, generates the self-signed cert,
+and runs `task install`. `task dev:env` is the env-only step (no cert, no
+stack start) if you want finer control. See the
+[Localhost dev quick start](#quick-start-fresh-install) box for usage.
+
+The manual steps the shortcut codifies:
 
 1. Set localhost-friendly domains in `.env` and `.env.traefik`:
 
@@ -967,10 +992,11 @@ Working on this repo is the same as running it as an operator, with two extras:
 - **Test against a throwaway domain.** The stack only runs in HTTPS mode (Traefik forces it).
   Two paths for local development:
 
-  - **Self-signed cert (offline-friendly).** `task dev:cert` generates
-    `traefik/ssl/dev.{crt,key}` covering `*.localhost`; pair with
-    `SERVER_CERT_PROVIDER=cert-file` and `OS2DISPLAY_SERVER_DOMAIN=os2display.localhost`.
-    Full recipe in the cookbook entry "How do I run the stack on localhost without a public
+  - **Self-signed cert (offline-friendly).** `task dev:install` runs the
+    whole flow (`dev:env` + `dev:cert` + `install`) against
+    `*.localhost`; `task dev:env` and `task dev:cert` are the granular
+    pieces if you want to bring them up step by step. Full recipe in the
+    cookbook entry "How do I run the stack on localhost without a public
     domain?". This is the default suggestion.
   - **Let's Encrypt staging.** Needs a public DNS name + reachable port 80; gives you a real
     chain but with an untrusted staging CA root.
@@ -1013,7 +1039,8 @@ reachable on its registry and every `${VAR}` reference in `docker-compose.yml` r
 │   ├── env-traefik.sh                       # `task env:traefik` — interactive setup
 │   ├── env-init.sh                          # `task env:init` — image extract + secret gen
 │   ├── install-secrets.sh                   # `task install` step — auto-fill CHANGE_ME
-│   └── dev-cert.sh                          # `task dev:cert` — self-signed local cert
+│   ├── dev-cert.sh                          # `task dev:cert` — self-signed local cert
+│   └── dev-env.sh                           # `task dev:env`  — localhost env bootstrap
 │
 ├── jwt/                                     # JWT keypair storage (gitignored)
 ├── media/                                   # media bind mount (gitignored)
@@ -1151,6 +1178,8 @@ Dev tooling
   dev:lint:sh          Lint scripts/*.sh via shellcheck (no fix mode)
   dev:lint:tasks       Assert task --list and README's "All tasks" agree
   dev:cert             Generate a self-signed cert for local-host development
+  dev:env              Bootstrap env files for localhost dev (non-interactive)
+  dev:install          Localhost dev quick start — dev:env + dev:cert + install
   dev:teardown         Tear down dev stack: containers + volumes + dev cert (prompts)
 ```
 
