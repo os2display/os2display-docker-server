@@ -19,11 +19,6 @@
 ###
 ### #### Known fragility points
 ###
-### - **`APP_ENV=dev` upstream image bug**: the bundled `/app/.env` still
-###   defaults to `APP_ENV=dev` until a 3.0.0-rc3+ tag ships the fix
-###   from display-api-service#435. We sed it to `prod` after `task
-###   env:init`. Drop the workaround once a fixed image tag is in
-###   `OS2DISPLAY_VERSION_API`.
 ### - **`task install` is interactive**: chained `task: <subtask>` calls
 ###   don't reliably pipe stdin to the Symfony console for tenant:add
 ###   and user:add (B23 caveat). We walk the install steps individually
@@ -62,9 +57,6 @@ jobs:
 
       - name: task env:init (domain prompt piped)
         run: printf 'os2display.localhost\n' | task env:init
-
-      - name: APP_ENV=prod workaround (upstream image bug — see header)
-        run: sed -i 's|^APP_ENV=dev|APP_ENV=prod|' .env.symfony
 
       - name: task env:traefik (cert-file branch, prompts piped)
         # Choice 2 = cert-file. Domain = traefik.localhost. LE email blank
