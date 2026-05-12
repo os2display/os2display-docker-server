@@ -494,22 +494,28 @@ tasks:
 
   dev:teardown:
     desc: |
-      Tear down the dev stack: removes containers + named volumes (mariadb,
-      redis), and the dev cert at traefik/ssl/dev.{crt,key}. Bind mounts
-      (./media, ./jwt, traefik/letsencrypt) and operator env files (.env,
-      .env.*) are preserved — re-run `task install` to bring up a fresh
-      stack against the same env config. Prompt-gated.
+      Tear down the dev stack to bare-checkout state: containers + named
+      volumes (mariadb, redis), JWT keypair (./jwt/{private,public}.pem),
+      dev cert (traefik/ssl/dev.{crt,key}), and the bootstrapped env
+      files (.env, .env.{php,nginx,mariadb,traefik,symfony}). Operator
+      `.env.*.local` overrides and ./media bind-mount uploads are
+      preserved. Re-run `task dev:install` to bring up a fresh stack
+      from scratch. Prompt-gated.
     prompt: |
-      This will remove ALL containers AND the bundled MariaDB + Redis
-      named volumes (DATA WIPE), plus the self-signed dev cert. Bind
-      mounts and env files are kept. Continue?
+      This will remove ALL containers AND named volumes (MariaDB +
+      Redis — DATA WIPE), the JWT keypair, the dev cert, and ALL
+      bootstrapped env files (.env, .env.<svc>, .env.symfony).
+      Operator .env.*.local overrides and ./media uploads survive.
+      Continue?
     cmds:
       # Plain `docker compose` (no --env-file flags) so teardown works even
       # if env files are missing or partially wiped. Compose falls back to
       # default `.env` discovery and the project-dir name.
       - docker compose down --volumes --remove-orphans
       - rm -f traefik/ssl/dev.crt traefik/ssl/dev.key
-      - echo "Dev stack torn down. Run 'task install' to bring it back up."
+      - rm -f jwt/private.pem jwt/public.pem
+      - rm -f .env .env.php .env.nginx .env.mariadb .env.traefik .env.symfony
+      - echo "Dev stack + bootstrapped state torn down. Run 'task dev:install' to bring it back up."
 
   # -- Internal ---------------------------------------------------------------
 

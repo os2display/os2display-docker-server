@@ -14,6 +14,13 @@
 #     variable rc3+ uses inside DATABASE_URL. Either way, the bundled
 #     value can't drift behind the stack and Doctrine picks the right
 #     SQL dialect.
+#   - ./jwt/{private,public}.pem: wiped if present, because rotating
+#     JWT_PASSPHRASE orphans whatever keypair the previous install
+#     generated. `task install`'s `lexik:jwt:generate-keypair
+#     --skip-if-exists` then regenerates fresh against the new
+#     passphrase. Skipping this wipe lets the runtime fail login with
+#     "Unable to create a signed JWT from the given configuration"
+#     (auth succeeds, signing fails).
 #
 # This is the single bootstrap entry point. `task install` / `task up` /
 # `task update` precondition on `.env.symfony` existing — running this is
@@ -96,10 +103,27 @@ sed -i.bak \
   .env.symfony
 rm -f .env.symfony.bak
 
+# JWT_PASSPHRASE was just rotated to a fresh random value. Any pre-
+# existing keypair at ./jwt/{private,public}.pem was encrypted with
+# whatever passphrase preceded this run — it's now orphaned and
+# `task install`'s `lexik:jwt:generate-keypair --skip-if-exists`
+# won't notice the mismatch, so login would 500 with "Unable to
+# create a signed JWT from the given configuration." (auth succeeds,
+# JWT signing fails). Wipe the orphans here; `task install`
+# regenerates fresh against the new passphrase.
+JWT_WIPED=""
+if [ -f jwt/private.pem ] || [ -f jwt/public.pem ]; then
+  rm -f jwt/private.pem jwt/public.pem
+  JWT_WIPED="yes"
+fi
+
 echo
 echo ".env.symfony created from $IMAGE."
 echo "  APP_SECRET / JWT_PASSPHRASE: random 32-byte hex (auto-generated)"
 echo "  DATABASE_URL serverVersion:  ${MARIADB_TAG}-MariaDB (matched to compose pin)"
+if [ -n "$JWT_WIPED" ]; then
+  echo "  ./jwt/*.pem:                 wiped (orphaned by rotated JWT_PASSPHRASE)"
+fi
 echo
 echo "Edit .env.symfony for any ADMIN_*, CLIENT_*, OIDC_*, or DATABASE_URL"
 echo "credential overrides, then run 'task install'."
