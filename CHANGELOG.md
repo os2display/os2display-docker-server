@@ -446,7 +446,28 @@ and aligned to the v3 image's env contract. **For 1.x → 3.x operators: see
 
 See [UPGRADE.md](UPGRADE.md) for the step-by-step 1.x → 3.x recipe.
 
-## v1.0.0 - Initial Release
+## v1.1.2 - 2026-02-06
+
+- Bump os2display version from 2.5.1 to 2.6.0. Client updated from 2.2.1 to 2.3.0.
+- Update `TASK_TEMPLATES` in `.env.docker.example` to include `brnd`.
+- Bring CHANGELOG up-to-date with v1.1.0 and v1.1.1 entries.
+
+## v1.1.1 - 2025-08-20
+
+- Assume install by user where UID and GID is 1042. The README contains further details.
+- Install the vimeo-template as default.
+- Add the screen layout `two-boxes-vertical-reversed` as default.
+- Extend wait-for-db so install works on slow hardware / VMs.
+- New env var `APP_KEY_VAULT_JSON` added.
+
+## v1.1.0 - 2025-06-24
+
+- **Bugfix:** `COMPOSE_SCREEN_CLIENT_PATH` default was `/screen`, should be `/client`.
+- Bump os2display version from 2.4.0 to 2.5.1.
+- Improved task menu.
+- Env var changes now take effect after `task down` followed by `task up`.
+
+## v1.0.0 - 2025-04-08
 
 - Introduced a Docker-based deployment tool for hosting the OS2display application.
 - Provided pre-configured files and task automation for simplifying deployment and management.
