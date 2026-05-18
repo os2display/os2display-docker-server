@@ -111,9 +111,16 @@ rm -f .env.symfony.bak
 # create a signed JWT from the given configuration." (auth succeeds,
 # JWT signing fails). Wipe the orphans here; `task install`
 # regenerates fresh against the new passphrase.
+#
+# Route the rm through a transient alpine container: the keypair is
+# written by the os2display container's UID 1042 `deploy` user, so
+# on Linux hosts a host-side `rm` fails with "Permission denied"
+# unless the operator runs as UID 1042 or has sudo. Docker Desktop
+# (macOS/Windows) brokers ownership at the VM boundary, so a host
+# `rm` would work there — but the container path is portable.
 JWT_WIPED=""
 if [ -f jwt/private.pem ] || [ -f jwt/public.pem ]; then
-  rm -f jwt/private.pem jwt/public.pem
+  docker run --rm -v "$PWD/jwt:/jwt" alpine rm -f /jwt/private.pem /jwt/public.pem
   JWT_WIPED="yes"
 fi
 

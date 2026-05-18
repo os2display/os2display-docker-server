@@ -512,8 +512,20 @@ tasks:
       # if env files are missing or partially wiped. Compose falls back to
       # default `.env` discovery and the project-dir name.
       - docker compose down --volumes --remove-orphans
-      - rm -f traefik/ssl/dev.crt traefik/ssl/dev.key
-      - rm -f jwt/private.pem jwt/public.pem
+      # Cert + JWT keypair are written by transient containers
+      # (alpine/openssl for the cert; the os2display container's UID 1042
+      # `deploy` user via lexik:jwt:generate-keypair for the keypair). On
+      # Linux hosts the files end up owned by container UIDs (root, 1042)
+      # that the operator shell can't `rm` without matching the UID or
+      # sudo. Docker Desktop on macOS / Windows brokers ownership at the
+      # VM boundary so a host `rm` would work there, but routing through
+      # a transient alpine container makes teardown portable across all
+      # host platforms.
+      - docker run --rm -v "$PWD:/work" alpine rm -f
+        /work/traefik/ssl/dev.crt /work/traefik/ssl/dev.key
+        /work/jwt/private.pem /work/jwt/public.pem
+      # .env.* are host-written by env-init.sh (cp + sed) — host shell
+      # owns them, so a plain `rm` works.
       - rm -f .env .env.php .env.nginx .env.mariadb .env.traefik .env.symfony
       - echo "Dev stack + bootstrapped state torn down. Run 'task dev:install' to bring it back up."
 
