@@ -914,6 +914,14 @@ See [UPGRADE.md](UPGRADE.md) for the step-by-step 1.x → 3.x migration recipe (
 
 ## Developer guide
 
+> [!IMPORTANT]
+> This guide is for development of **this compose server setup** —
+> the Taskfile, env-file layout, Traefik wiring, CI workflows, and
+> bundled service composition. To develop the **OS2display application
+> itself** (admin UI, screen client, API), work in the upstream
+> [`display-api-service`](https://github.com/os2display/display-api-service)
+> repo, which ships its own docker compose dev environment.
+
 ### Local dev quick start
 
 One command brings up a fully working stack on your laptop against
