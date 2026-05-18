@@ -32,6 +32,7 @@ no build step, no shell-script glue beyond the Taskfile.
   - [Caveats and foot-guns](#caveats-and-foot-guns)
   - [Migrating from an older release](#migrating-from-an-older-release)
 - [Developer guide](#developer-guide)
+  - [Local dev quick start](#local-dev-quick-start)
   - [Design principles](#design-principles)
   - [Local development](#local-development)
   - [Repository layout](#repository-layout)
@@ -44,6 +45,13 @@ no build step, no shell-script glue beyond the Taskfile.
 ---
 
 ## Operator guide
+
+> [!IMPORTANT]
+> This section covers **production server installs** — real FQDN, public
+> ports 80/443, Let's Encrypt or operator-supplied cert, real tenant +
+> admin user. For **local testing on a dev machine** (no public DNS, no
+> real cert, throwaway tenant/user), jump to the
+> [Developer guide → Local dev quick start](#local-dev-quick-start).
 
 ### Prerequisites
 
@@ -120,22 +128,8 @@ After `task install` returns, the API + bundled admin UI + screen client are rea
 `https://<your-domain>/`, `/admin/`, `/client/`. The Traefik dashboard is at
 `https://<traefik-host>/traefik/dashboard/` (basic-auth-gated).
 
-**Localhost dev quick start.** For a dev machine without a public DNS name or
-Let's Encrypt, replace the three steps above with one of:
-
-```bash
-task dev:install                   # one-shot: dev:env + dev:cert + install
-# or, granular:
-task dev:env                       # env files + .env.traefik for cert-file (no prompts)
-task dev:cert                      # self-signed cert at traefik/ssl/dev.{crt,key}
-task install                       # interactive tenant + admin user
-```
-
-`task dev:env` configures `os2display.localhost` + `traefik.localhost` with a
-fixed `admin` / `admin` dashboard password (override via
-`DEV_DASHBOARD_PASSWORD=…`). Not for production. See cookbook entry
-[How do I run the stack on localhost without a public domain?](#how-do-i-run-the-stack-on-localhost-without-a-public-domain)
-for the underlying recipe these tasks automate.
+**Local dev testing?** Use `task dev:install` instead — see
+[Developer guide → Local dev quick start](#local-dev-quick-start).
 
 ### Configuration files
 
@@ -920,6 +914,81 @@ See [UPGRADE.md](UPGRADE.md) for the step-by-step 1.x → 3.x migration recipe (
 
 ## Developer guide
 
+> [!IMPORTANT]
+> This guide is for development of **this compose server setup** —
+> the Taskfile, env-file layout, Traefik wiring, CI workflows, and
+> bundled service composition. To develop the **OS2display application
+> itself** (admin UI, screen client, API), work in the upstream
+> [`display-api-service`](https://github.com/os2display/display-api-service)
+> repo, which ships its own docker compose dev environment.
+
+### Local dev quick start
+
+One command brings up a fully working stack on your laptop against
+`*.localhost` with a self-signed cert and no external services:
+
+```bash
+git clone git@github.com:os2display/os2display-docker-server.git
+cd os2display-docker-server
+task dev:install
+```
+
+`dev:install` chains three steps in fresh `task` subprocesses:
+
+1. **`task dev:env`** — bootstraps env files for localhost (non-interactive):
+   - `.env` with `OS2DISPLAY_SERVER_DOMAIN=os2display.localhost`
+   - `.env.traefik` with `SERVER_DOMAIN=traefik.localhost`,
+     `SERVER_CERT_PROVIDER=cert-file`, and a hashed `admin`/`admin`
+     dashboard basic-auth value (override via `DEV_DASHBOARD_PASSWORD=…`
+     before running)
+   - `.env.symfony` extracted from the pinned API image, with random
+     `APP_SECRET` + `JWT_PASSPHRASE` and the Doctrine `serverVersion`
+     aligned to the bundled MariaDB pin
+   - `.env.{php,nginx,mariadb}` copied from their `.example` templates
+2. **`task dev:cert` (`FORCE=1`)** — generates `traefik/ssl/dev.{crt,key}`
+   covering `os2display.localhost`, `traefik.localhost`, `localhost`, and
+   `127.0.0.1` (transient `alpine/openssl` container, no host openssl
+   needed)
+3. **`task install`** — auto-fills `CHANGE_ME` MariaDB sentinels with
+   random hex, pulls images, brings the stack up with healthcheck waits,
+   runs Doctrine migrations, generates the JWT keypair, and walks the
+   interactive prompts below
+
+**Interactive prompts during `task install`** — `dev:install` is hands-off
+through cert generation; from `task install` onward you'll see:
+
+| Prompt | Default | What it does |
+|---|---|---|
+| `WARNING! You are about to execute a migration… Are you sure?` | `yes` | Press Enter — applies Doctrine migrations to the bundled MariaDB. |
+| `No templates are installed. Install all 15?` | `yes` | Press Enter — installs the bundled slideshow templates. |
+| `No screen layouts are installed. Install all 9?` | `yes` | Press Enter — installs the bundled screen layouts. |
+| `Tenant Key:` | — | Short identifier (e.g. `dev`). Used in URLs and the media path. |
+| `Title:` | — | Human-readable tenant name. |
+| `Description:` | — | Optional, leave blank to skip. |
+| `Email:` | — | Your admin login. |
+| `Password:` | — | Hidden as you type. |
+| `Full Name:` | — | Displayed in the admin UI header. |
+| `Please select the user's role` | `editor` | Type `1` for `admin`. |
+| `Please select the tenant(s)` | — | Type the tenant key from step 4. |
+
+When `task install` returns, the URLs print at the bottom:
+
+- Admin: `https://os2display.localhost/admin`
+- Screen client: `https://os2display.localhost/client`
+- Traefik dashboard: `https://traefik.localhost/traefik/dashboard/`
+  (basic-auth `admin`/`admin`)
+
+`*.localhost` resolves to `127.0.0.1` automatically on Linux, macOS, and
+Windows per RFC 6761 — no `/etc/hosts` edit needed. The browser shows an
+"untrusted CA" warning the first time (accept it, or trust
+`traefik/ssl/dev.crt` in your system keychain to skip the prompt).
+
+**Reset to bare checkout.** `task dev:teardown` wipes containers + named
+volumes (MariaDB + Redis data loss), the JWT keypair, the dev cert, and
+the bootstrapped env files. Operator `.env.*.local` overrides and
+`./media` uploads are preserved. Re-run `task dev:install` afterwards
+for a clean rebuild. Prompt-gated.
+
 ### Design principles
 
 The repo is a thin wrapper around upstream tooling. The constraints we work under:
@@ -977,7 +1046,9 @@ The repo is a thin wrapper around upstream tooling. The constraints we work unde
 
 ### Local development
 
-Working on this repo is the same as running it as an operator, with two extras:
+The fast path is `task dev:install` (see
+[Local dev quick start](#local-dev-quick-start) above). Beyond bringing
+up the stack, working on this repo has two extras:
 
 - **The `dev` compose profile** activates the `markdownlint`, `prettier`, and `shellcheck`
   services for local linting. The `dev:lint*` Task family wraps them:
@@ -989,22 +1060,17 @@ Working on this repo is the same as running it as an operator, with two extras:
 
   Run these before opening a PR; CI runs the same checks on every push.
 
-- **Test against a throwaway domain.** The stack only runs in HTTPS mode (Traefik forces it).
-  Two paths for local development:
+- **Alternative cert paths.** The stack only runs in HTTPS mode (Traefik
+  forces it). `task dev:install` uses a self-signed cert covering
+  `*.localhost` — fine for laptop dev. If you need a real cert chain
+  (e.g. testing OIDC against an external provider that won't accept
+  self-signed), point at Let's Encrypt staging — needs a public DNS name,
+  reachable port 80, and lives with an untrusted staging CA root:
 
-  - **Self-signed cert (offline-friendly).** `task dev:install` runs the
-    whole flow (`dev:env` + `dev:cert` + `install`) against
-    `*.localhost`; `task dev:env` and `task dev:cert` are the granular
-    pieces if you want to bring them up step by step. Full recipe in the
-    cookbook entry "How do I run the stack on localhost without a public
-    domain?". This is the default suggestion.
-  - **Let's Encrypt staging.** Needs a public DNS name + reachable port 80; gives you a real
-    chain but with an untrusted staging CA root.
-
-    ```bash
-    $EDITOR .env.traefik
-    # TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_CASERVER=https://acme-staging-v02.api.letsencrypt.org/directory
-    ```
+  ```bash
+  $EDITOR .env.traefik
+  # TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_CASERVER=https://acme-staging-v02.api.letsencrypt.org/directory
+  ```
 
 Standard fork-and-PR flow. PRs run four CI workflows (Markdown, YAML, Shell, Compose). The Compose
 workflow is the most likely to surface issues — it asserts that every pinned image is

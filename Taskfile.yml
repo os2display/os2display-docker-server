@@ -25,8 +25,13 @@ tasks:
     preconditions:
       - sh: "[ -f .env.symfony ]"
         msg: ".env.symfony missing — run 'task env:init' first to bootstrap all env files."
-      - sh: '[ "${SERVER_DASHBOARD_AUTH:-}" != "CHANGE_ME" ]'
-        msg: "Traefik dashboard auth not set — run 'task env:traefik' first (or set SERVER_DASHBOARD_AUTH manually in .env.traefik)."
+      # File-truth instead of env-snapshot: Task's `dotenv:` loads
+      # .env.traefik once at startup and won't override the var if it
+      # was already exported (godotenv preserves existing env). Chained
+      # callers like `task dev:install` mutate .env.traefik mid-run, so
+      # checking the file directly is the only reliable gate.
+      - sh: '[ -f .env.traefik ] && ! grep -qE "^SERVER_DASHBOARD_AUTH=CHANGE_ME$" .env.traefik'
+        msg: "Traefik dashboard auth not set — run 'task env:traefik' (or 'task dev:env' for localhost dev) first."
     cmds:
       - echo "Installing"
       - ./scripts/install-secrets.sh
@@ -476,28 +481,53 @@ tasks:
       `task install` chained. Non-interactive through cert generation;
       `task install` still prompts for the initial tenant + admin user.
     cmds:
-      - task: dev:env
-      - task: dev:cert
-      - task: install
+      # Each step is a fresh `task` subprocess so dotenv reloads between
+      # them — `dev:env` mutates .env.traefik, and `dev:cert` + the
+      # `install` precondition need to see the new values, not the
+      # snapshot Task loaded when `dev:install` started. (Chained
+      # `task: <name>` references run in the same process and inherit
+      # the stale env.) FORCE=1 on dev:cert regenerates the cert so its
+      # SANs match the domains dev:env just wrote.
+      - task dev:env
+      - FORCE=1 task dev:cert
+      - task install
 
   dev:teardown:
     desc: |
-      Tear down the dev stack: removes containers + named volumes (mariadb,
-      redis), and the dev cert at traefik/ssl/dev.{crt,key}. Bind mounts
-      (./media, ./jwt, traefik/letsencrypt) and operator env files (.env,
-      .env.*) are preserved — re-run `task install` to bring up a fresh
-      stack against the same env config. Prompt-gated.
+      Tear down the dev stack to bare-checkout state: containers + named
+      volumes (mariadb, redis), JWT keypair (./jwt/{private,public}.pem),
+      dev cert (traefik/ssl/dev.{crt,key}), and the bootstrapped env
+      files (.env, .env.{php,nginx,mariadb,traefik,symfony}). Operator
+      `.env.*.local` overrides and ./media bind-mount uploads are
+      preserved. Re-run `task dev:install` to bring up a fresh stack
+      from scratch. Prompt-gated.
     prompt: |
-      This will remove ALL containers AND the bundled MariaDB + Redis
-      named volumes (DATA WIPE), plus the self-signed dev cert. Bind
-      mounts and env files are kept. Continue?
+      This will remove ALL containers AND named volumes (MariaDB +
+      Redis — DATA WIPE), the JWT keypair, the dev cert, and ALL
+      bootstrapped env files (.env, .env.<svc>, .env.symfony).
+      Operator .env.*.local overrides and ./media uploads survive.
+      Continue?
     cmds:
       # Plain `docker compose` (no --env-file flags) so teardown works even
       # if env files are missing or partially wiped. Compose falls back to
       # default `.env` discovery and the project-dir name.
       - docker compose down --volumes --remove-orphans
-      - rm -f traefik/ssl/dev.crt traefik/ssl/dev.key
-      - echo "Dev stack torn down. Run 'task install' to bring it back up."
+      # Cert + JWT keypair are written by transient containers
+      # (alpine/openssl for the cert; the os2display container's UID 1042
+      # `deploy` user via lexik:jwt:generate-keypair for the keypair). On
+      # Linux hosts the files end up owned by container UIDs (root, 1042)
+      # that the operator shell can't `rm` without matching the UID or
+      # sudo. Docker Desktop on macOS / Windows brokers ownership at the
+      # VM boundary so a host `rm` would work there, but routing through
+      # a transient alpine container makes teardown portable across all
+      # host platforms.
+      - docker run --rm -v "$PWD:/work" alpine rm -f
+        /work/traefik/ssl/dev.crt /work/traefik/ssl/dev.key
+        /work/jwt/private.pem /work/jwt/public.pem
+      # .env.* are host-written by env-init.sh (cp + sed) — host shell
+      # owns them, so a plain `rm` works.
+      - rm -f .env .env.php .env.nginx .env.mariadb .env.traefik .env.symfony
+      - echo "Dev stack + bootstrapped state torn down. Run 'task dev:install' to bring it back up."
 
   # -- Internal ---------------------------------------------------------------
 
