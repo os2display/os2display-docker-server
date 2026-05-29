@@ -45,6 +45,10 @@ See the [v2.x.x — Skipped](#v2xx---skipped) entry below for why this major ski
   `logs:access`, `logs:disk`.
 - Global JSON-file log rotation (10MB × 3 files per service), tunable via `LOG_MAX_SIZE` /
   `LOG_MAX_FILE`.
+- Aligned media-upload limits with the upstream 3.0.0 app cap: `.env.php.example` ships
+  `PHP_UPLOAD_MAX_FILESIZE=200M` / `PHP_POST_MAX_SIZE=210M` and `.env.nginx.example` ships
+  `NGINX_MAX_BODY_SIZE=210m`, matching the new `MEDIA_MAX_UPLOAD_SIZE_MB=200` Symfony validator
+  ceiling that 3.0.0 introduces. UPGRADE.md §5 explains the four-layer alignment rule.
 
 ### Local development
 

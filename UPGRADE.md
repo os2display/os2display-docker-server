@@ -175,6 +175,25 @@ $EDITOR .env.mariadb
 task env:traefik
 ```
 
+##### Media upload size: align all three layers
+
+v3 adds an app-level cap on media uploads, `MEDIA_MAX_UPLOAD_SIZE_MB` (default `200`,
+in MiB), enforced by the Symfony validator on `Media::$file`. Because uploads cross
+nginx → PHP-FPM → Symfony, all three layers must agree, or the lowest wins (and the
+operator sees a confusing 413 / `UPLOAD_ERR_INI_SIZE` instead of the app's clear
+"file exceeds N MiB" error). Defaults shipped in `.env.php.example` and
+`.env.nginx.example` are aligned to `200`; if you've customised any of them, keep
+the inequality intact:
+
+```text
+NGINX_MAX_BODY_SIZE  >=  PHP_POST_MAX_SIZE  >=  PHP_UPLOAD_MAX_FILESIZE  >=  MEDIA_MAX_UPLOAD_SIZE_MB
+```
+
+`task env:migrate` carries `MEDIA_MAX_UPLOAD_SIZE_MB` over from the image's bundled
+`.env`, so it lands in `.env.symfony` automatically. Verify with `task env:diff` after
+`env:init` — if the diff shows the key only on the image side, your migrated file
+predates this var and you should copy the line over by hand.
+
 #### 6. MariaDB 10.x → 11.4 upgrade
 
 The bundled MariaDB is `mariadb:11.4.10` in 3.x (was `mariadb:10.x` in 1.x). Three things must
