@@ -185,7 +185,7 @@ operator sees a confusing 413 / `UPLOAD_ERR_INI_SIZE` instead of the app's clear
 `.env.nginx.example` are aligned to `200`; if you've customised any of them, keep
 the inequality intact:
 
-```
+```text
 NGINX_MAX_BODY_SIZE  >=  PHP_POST_MAX_SIZE  >=  PHP_UPLOAD_MAX_FILESIZE  >=  MEDIA_MAX_UPLOAD_SIZE_MB
 ```
 
