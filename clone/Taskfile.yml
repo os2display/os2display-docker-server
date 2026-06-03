@@ -1,0 +1,58 @@
+version: "3"
+silent: true
+
+# Standalone Taskfile for the stack-clone tooling. NOT included by the root
+# Taskfile — invoke it explicitly. The scripts self-locate (they cd to the
+# stack root that holds .env / .env.symfony), so the current directory does
+# not matter.
+#
+# Typical flow (run from the stack root):
+#   task -t clone/Taskfile.yml init      # create clone/.env.clone from example
+#   $EDITOR clone/.env.clone             # set DEST / DOMAIN / CLONE_DATABASE_URL
+#   task -t clone/Taskfile.yml clone     # repeatable — reuses clone/.env.clone
+#
+# Or just `cd clone && task <name>` (Task auto-discovers this Taskfile).
+#
+# Config lives in clone/.env.clone (gitignored). clone.sh loads it; variables
+# set in the environment override the file for one-off runs.
+
+vars:
+  # Absolute path to this Taskfile's directory — used so the scripts resolve
+  # regardless of the working directory the task is invoked from.
+  DIR: "{{.TASKFILE_DIR}}"
+
+tasks:
+  default:
+    cmds:
+      - task --list --taskfile "{{.TASKFILE}}"
+
+  init:
+    desc: Create clone/.env.clone from the example (edit it, then run `clone`)
+    cmds:
+      - |
+        if [ -f "{{.DIR}}/.env.clone" ]; then
+          echo "clone/.env.clone already exists — edit it, or delete it to re-init."
+        else
+          cp "{{.DIR}}/.env.clone.example" "{{.DIR}}/.env.clone"
+          echo "Created clone/.env.clone — set DEST / DOMAIN / CLONE_DATABASE_URL, then run:"
+          echo "  task -t clone/Taskfile.yml clone"
+        fi
+
+  clone:
+    desc: |
+      Clone the stack using clone/.env.clone. Override any variable inline for a
+      one-off run, e.g. `DOMAIN=other.example.com task -t clone/Taskfile.yml clone`.
+    cmds:
+      - "{{.DIR}}/clone.sh"
+
+  dump:
+    desc: Dump the source DATABASE_URL database to ./backup/<UTC-ts>.sql.gz (optional FILE=…)
+    cmds:
+      - "{{.DIR}}/db-dump.sh {{.FILE}}"
+
+  restore:
+    desc: "Restore a dump into the DATABASE_URL database — FILE=backup/<ts>.sql.gz (DESTRUCTIVE)"
+    requires:
+      vars: [FILE]
+    cmds:
+      - "{{.DIR}}/db-restore.sh {{.FILE}}"

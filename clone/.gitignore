@@ -1,0 +1,2 @@
+# Operator-edited clone config (holds DEST / DOMAIN / CLONE_DATABASE_URL).
+.env.clone
