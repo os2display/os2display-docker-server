@@ -46,13 +46,34 @@ The clone reads its config from `clone/.env.clone`, so set the variables once an
 Run everything from the stack root (the directory holding `.env` / `.env.symfony` / `docker-compose.yml`):
 
 ```bash
-task -t clone/Taskfile.yml init      # creates clone/.env.clone from the example
-$EDITOR clone/.env.clone             # set DEST / DOMAIN / CLONE_DATABASE_URL
-task -t clone/Taskfile.yml clone     # repeatable — reuses clone/.env.clone
+task -t clone/Taskfile.yml init        # creates clone/.env.clone from the example
+$EDITOR clone/.env.clone               # set DEST / DOMAIN (and CLONE_DATABASE_URL)
+task -t clone/Taskfile.yml create-db   # optional: provision the clone DB (see below)
+task -t clone/Taskfile.yml clone       # repeatable — reuses clone/.env.clone
 ```
 
-`cd clone && task <name>` works too (Task auto-discovers the Taskfile). Available tasks: `init`, `clone`, `dump`,
-`restore`.
+`cd clone && task <name>` works too (Task auto-discovers the Taskfile). Available tasks: `init`, `create-db`,
+`clone`, `dump`, `restore`.
+
+### Provisioning the clone database (same server as the source)
+
+If the clone should live on the **same database server** as the source, `create-db` provisions it for you instead
+of you hand-crafting `CLONE_DATABASE_URL`:
+
+```bash
+task -t clone/Taskfile.yml create-db   # prompts for the DB admin (root) password
+```
+
+It parses the source `DATABASE_URL` for the server and app user, connects as the admin user (default `root` —
+**you are prompted for the password**), then on that same server:
+
+- creates the clone database (default name `<source-db>_clone`, override with `CLONE_DB_NAME=…`), mirroring the
+  source DB's charset/collation;
+- ensures the source's app user exists as `<user>@'%'` and grants it access to the clone DB.
+
+The clone reuses the source's application credentials — only the schema name differs — so production data is never
+touched. The resulting `CLONE_DATABASE_URL` is written into `clone/.env.clone`, ready for the `clone` task.
+Override the admin user with `DB_ADMIN_USER=…`, or skip the prompt in CI with `DB_ADMIN_PASSWORD=…`.
 
 ### Configuration (`clone/.env.clone`)
 

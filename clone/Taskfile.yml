@@ -38,6 +38,16 @@ tasks:
           echo "  task -t clone/Taskfile.yml clone"
         fi
 
+  create-db:
+    desc: |
+      Create the clone's database on the SAME server as the source (parsed from
+      DATABASE_URL), grant the app user access, and write the resulting
+      CLONE_DATABASE_URL into clone/.env.clone. Prompts for the DB admin (root)
+      password. Override with CLONE_DB_NAME=… (default <source-db>_clone) and
+      DB_ADMIN_USER=… (default root).
+    cmds:
+      - "{{.DIR}}/db-create.sh"
+
   clone:
     desc: |
       Clone the stack using clone/.env.clone. Override any variable inline for a
