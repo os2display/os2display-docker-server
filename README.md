@@ -249,6 +249,7 @@ Three docker networks:
 - [How do I tune nginx for large uploads?](#how-do-i-tune-nginx-for-large-uploads)
 - [How do I take a database backup?](#how-do-i-take-a-database-backup)
 - [How do I diagnose database performance issues?](#how-do-i-diagnose-database-performance-issues)
+- [How do I check PHP OPcache health?](#how-do-i-check-php-opcache-health)
 - [How do I restore from a backup?](#how-do-i-restore-from-a-backup)
 - [How do I add a tenant?](#how-do-i-add-a-tenant)
 - [How do I add a user?](#how-do-i-add-a-user)
@@ -527,6 +528,41 @@ out before the connect handshake finished.
 `db:errors` greps the mariadb container's stderr for `Too many connections`, `Aborted
 connection`, `lock wait timeout exceeded`, `Out of memory`, `[ERROR]`, `[CRITICAL]` over
 the last hour. Empty output means clean.
+
+#### How do I check PHP OPcache health?
+
+```bash
+task php:opcache          # human-readable report
+RAW=1 task php:opcache    # the probe's raw JSON, for jq piping
+```
+
+The PHP-side counterpart to `db:metrics`: a snapshot of the FPM pool's OPcache —
+memory used/wasted, interned-strings buffer, cached keys vs `max_accelerated_files`,
+hit rate, OOM/hash restarts, and preload statistics. It wraps the `opcache-status`
+probe shipped in the API image (a cgi-fcgi round-trip into an FPM worker — the only
+place the pool's OPcache shared memory is visible; CLI PHP keeps a separate cache),
+and ends with a warnings block that maps each symptom to the `PHP_OPCACHE_*`
+override that fixes it:
+
+```text
+Memory (PHP_OPCACHE_MEMORY_CONSUMPTION)
+  Used:           98.2 MiB / 256.0 MiB
+  Wasted:         0.0 MiB (0.00 %)
+
+Scripts (PHP_OPCACHE_MAX_ACCELERATED_FILES)
+  Cached scripts: 7,912
+  Cached keys:    8,065 / 16,229
+…
+Health: OK — no warnings.
+```
+
+OOM restarts or `cache full: yes` → raise `PHP_OPCACHE_MEMORY_CONSUMPTION`; cached
+keys near max or hash restarts → raise `PHP_OPCACHE_MAX_ACCELERATED_FILES`. Set the
+override in `.env.php.local` — compose loads it on top of `.env.php`, and it survives
+an `env:init` re-bootstrap (see
+[How do I override env config locally without committing?](#how-do-i-override-env-config-locally-without-committing)).
+The probe ships in API images **3.0.0-rc4 and newer** — on older images the task
+fails with guidance to bump `OS2DISPLAY_VERSION_API` and `task update`.
 
 #### How do I restore from a backup?
 
@@ -1219,6 +1255,7 @@ Operations
   logs:disk            Docker log disk usage per container + retention policy (Linux only)
   console              Run any bin/console command in os2display  (e.g. `task console -- list`)
   cache:clear          Clear the application cache               (alias: cc)
+  php:opcache          Report on the FPM pool's OPcache health (RAW=1 for JSON)
   tenant:add           Add a tenant group (interactive)          (alias: tenant_add)
   user:add             Add a user — editor or admin (interactive)(alias: user_add)
   templates:install    Install bundled templates + screen layouts(alias: load_templates)
