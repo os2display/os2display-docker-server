@@ -39,6 +39,14 @@ See the [v2.x.x — Skipped](#v2xx---skipped) entry below for why this major ski
 - New `task db:backup` (online `mariadb-dump` to `./backup/<ts>.sql.gz`) and `task db:upgrade`
   (idempotent `mariadb-upgrade`).
 - New MariaDB diagnostics: `task db:metrics`, `db:processes`, `db:errors`.
+- New `task php:opcache` — operator report on the FPM pool's OPcache (memory, interned
+  strings, cached-key headroom, hit rate, restarts, preload) with warnings mapped to the
+  `PHP_OPCACHE_*` overrides to set in `.env.php.local`. Wraps the `opcache-status` probe
+  shipped in API images 3.0.0-rc4 and newer; `RAW=1` dumps the probe's raw JSON.
+- Aligned `.env.php.example` OPcache defaults with the tuned values the 3.0.0 API image
+  ships: `PHP_OPCACHE_MAX_ACCELERATED_FILES=16229` (was `20000`, which silently overrode
+  the image's measured tuning via `env_file:` precedence) and new
+  `PHP_OPCACHE_INTERNED_STRINGS_BUFFER=32`.
 - New host inspection family: `task host:resources` (recommend `mem_limit`s), `host:php`
   (PHP-FPM pool sizing), `host:disk`, `host:disk:tenants`.
 - New log inspection namespace: `task logs` (follow), `logs:since`, `logs:errors`,

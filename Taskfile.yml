@@ -155,6 +155,19 @@ tasks:
       - task: console
         vars: { CLI_ARGS: "cache:clear" }
 
+  php:opcache:
+    desc: |
+      Report on the FPM pool's OPcache health: memory, interned strings,
+      cached-key headroom, hit rate, restarts, preload. Wraps the
+      `opcache-status` probe shipped in API images 3.0.0-rc4 and newer
+      (fails with guidance on older images). RAW=1 dumps the probe's
+      untouched JSON for jq piping.
+    preconditions:
+      - sh: "[ -f .env ]"
+        msg: ".env missing — run 'task env:init' first."
+    cmds:
+      - ./scripts/php-opcache.sh
+
   tenant:add:
     desc: Add a new tenant group (interactive)
     aliases: [tenant_add]
