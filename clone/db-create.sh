@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 #
-# Create the clone's database on the SAME server as the source, then write the
-# resulting CLONE_DATABASE_URL into clone/.env.clone so `clone.sh` can use it.
+# Create the clone's database on the source's EXTERNAL database server, then
+# write the resulting CLONE_DATABASE_URL into clone/.env.clone so `clone.sh`
+# can use it.
 #
-# It parses the source DATABASE_URL (./.env.symfony) for the server host/port
-# and the application user, connects as a DB ADMIN (root by default — you are
-# prompted for the password), and:
+# The source DATABASE_URL is read from the first of SOURCE/.env.local,
+# SOURCE/.env.docker.local (1.x layouts) or SOURCE/.env.symfony (v3 layout)
+# that defines it — SOURCE comes from clone/.env.clone or the environment.
+# It parses that URL for the server host/port and the application user,
+# connects as a DB ADMIN (root by default — you are prompted for the
+# password), and:
 #   - CREATE DATABASE IF NOT EXISTS <clone-db>  (mirroring the source DB's
 #     charset/collation),
 #   - CREATE USER IF NOT EXISTS for the app user @'%' with the source password,
@@ -16,15 +20,20 @@
 # URL with the database segment swapped. Production data is untouched: the
 # clone is a separate schema on the same server.
 #
-# Run from the stack root (or via `task -t clone/Taskfile.yml create-db`):
+# The database server is assumed EXTERNAL — reachable from this host over the
+# network. The transient mariadb client runs on the default docker bridge; a
+# docker-internal hostname (a bundled `host=mariadb` URL) won't resolve there.
+#
+# Run from this checkout's root (or via `task -t clone/Taskfile.yml create-db`):
 #   clone/db-create.sh
 #
 # Variables:
+#   SOURCE=<dir>              the source stack root (default: from clone/.env.clone)
 #   CLONE_DB_NAME=<name>      clone database name (default: <source-db>_clone)
 #   DB_ADMIN_USER=<user>      admin user to connect as (default: root)
 #   DB_ADMIN_PASSWORD=<pw>    admin password (skips the prompt; for CI)
 #
-# Requires: docker, a readable .env.symfony with DATABASE_URL.
+# Requires: docker, a DATABASE_URL in one of the SOURCE env files above.
 
 set -euo pipefail
 
@@ -34,13 +43,47 @@ cd "$SCRIPT_DIR/.."
 # shellcheck source=clone/lib-db-url.sh
 . "$SCRIPT_DIR/lib-db-url.sh"
 
-[ -f .env.symfony ] || {
-  echo "Error: .env.symfony missing — run 'task env:init' first." >&2
+# SOURCE from the environment wins; clone/.env.clone is the fallback. Relative
+# paths are resolved from this stack root (we cd'd above).
+if [ -z "${SOURCE:-}" ] && [ -f "$SCRIPT_DIR/.env.clone" ]; then
+  SOURCE=$(grep -E '^SOURCE=' "$SCRIPT_DIR/.env.clone" | head -1 | cut -d= -f2-)
+fi
+: "${SOURCE:?Set SOURCE in clone/.env.clone (or the environment) — the stack root to clone}"
+SOURCE="$(cd "$SOURCE" 2>/dev/null && pwd)" || {
+  echo "Error: SOURCE directory not found." >&2
   exit 1
 }
+# Find the source DATABASE_URL. 1.x installs keep it in .env.local or
+# .env.docker.local; the v3 layout in .env.symfony. First file that defines
+# it wins — so this works whether the source is the old production layout or
+# an already-migrated v3 stack.
+SRC_ENV_FILE=""
+for f in .env.local .env.docker.local .env.symfony; do
+  if [ -f "$SOURCE/$f" ] && grep -qE '^DATABASE_URL=' "$SOURCE/$f"; then
+    SRC_ENV_FILE="$SOURCE/$f"
+    break
+  fi
+done
+[ -n "$SRC_ENV_FILE" ] || {
+  echo "Error: no DATABASE_URL found in $SOURCE/.env.local, .env.docker.local" >&2
+  echo "       or .env.symfony — is SOURCE a configured stack root?" >&2
+  exit 1
+}
+echo "Source DATABASE_URL from ${SRC_ENV_FILE}"
 
-SRC_URL=$(read_database_url .env.symfony)
+SRC_URL=$(read_database_url "$SRC_ENV_FILE")
 db_url_parse "$SRC_URL" # sets DB_USER/DB_PASS/DB_HOST/DB_PORT/DB_NAME (query stripped)
+
+# External-server assumption: the host must be reachable from this machine —
+# a docker-internal name (bundled DB) won't resolve from the default bridge.
+case "$DB_HOST" in
+  *.*) ;;
+  *)
+    echo "Warning: source DB host '$DB_HOST' looks like a docker-internal name," >&2
+    echo "         not an external server — this script assumes an EXTERNAL" >&2
+    echo "         database reachable from this host. Continuing anyway." >&2
+    ;;
+esac
 
 CLONE_DB_NAME="${CLONE_DB_NAME:-${DB_NAME}_clone}"
 ADMIN_USER="${DB_ADMIN_USER:-root}"
@@ -59,11 +102,10 @@ if [ "$CLONE_DB_NAME" = "$DB_NAME" ]; then
   exit 1
 fi
 
-PROJECT=$(compose_project)
+# Client tag from THIS checkout's compose pin — the server is external, so
+# there's no local container to match; any recent mariadb client will do.
+# No --network: the default bridge has egress to the external host.
 TAG=$(mariadb_tag)
-net_args=()
-NET=$(app_network "$PROJECT")
-[ -n "$NET" ] && net_args=(--network "$NET")
 
 # Build the clone URL: source URL with the database segment swapped, query
 # (serverVersion=…) preserved verbatim, credentials untouched.
@@ -91,13 +133,13 @@ fi
   exit 1
 }
 
-echo "Creating database '${CLONE_DB_NAME}' on ${DB_HOST}:${DB_PORT}${NET:+ (via ${NET})}..."
+echo "Creating database '${CLONE_DB_NAME}' on ${DB_HOST}:${DB_PORT}..."
 
 # Mirror the source database's default charset/collation onto the clone, so
 # any post-restore migration that creates a table without an explicit charset
 # matches the source. -N -B → bare, tab-separated output.
 read -r SRC_CS SRC_COLL < <(
-  docker run -i --rm "${net_args[@]}" -e MYSQL_PWD="$ADMIN_PW" "mariadb:${TAG}" \
+  docker run -i --rm -e MYSQL_PWD="$ADMIN_PW" "mariadb:${TAG}" \
     mariadb --host="$DB_HOST" --port="$DB_PORT" --user="$ADMIN_USER" -N -B \
     -e "SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='${DB_NAME}';"
 ) || {
@@ -121,7 +163,7 @@ CREATE USER IF NOT EXISTS '${DB_USER}'@'%' IDENTIFIED BY '${ESC_APP_PW}';
 GRANT ALL PRIVILEGES ON \`${CLONE_DB_NAME}\`.* TO '${DB_USER}'@'%';
 FLUSH PRIVILEGES;"
 
-printf '%s\n' "$SQL" | docker run -i --rm "${net_args[@]}" -e MYSQL_PWD="$ADMIN_PW" "mariadb:${TAG}" \
+printf '%s\n' "$SQL" | docker run -i --rm -e MYSQL_PWD="$ADMIN_PW" "mariadb:${TAG}" \
   mariadb --host="$DB_HOST" --port="$DB_PORT" --user="$ADMIN_USER"
 
 # Write CLONE_DATABASE_URL into clone/.env.clone so the clone task picks it up.
@@ -141,5 +183,5 @@ fi
 echo
 echo "Database ready. Wrote CLONE_DATABASE_URL into clone/.env.clone:"
 echo "  ${CLONE_DATABASE_URL}"
-echo "Next: set DEST/DOMAIN in clone/.env.clone (if not already), then run:"
+echo "Next: set DOMAIN in clone/.env.clone (if not already), then run:"
 echo "  task -t clone/Taskfile.yml clone"
