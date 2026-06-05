@@ -12,14 +12,18 @@
 # Run from the stack root via the wrapper path, or directly:
 #   clone/db-dump.sh [OUTFILE]      OUTFILE defaults to backup/<UTC-ts>.sql.gz
 #
+# STACK_ROOT=<dir> overrides which stack to dump (default: the parent of this
+# clone/ directory). clone.sh uses it to dump the SOURCE stack while writing
+# the file into the destination's backup/ via an absolute OUTFILE.
+#
 # Requires: docker, a readable .env.symfony with DATABASE_URL.
 
 set -euo pipefail
 
 # Resolve our own dir (for the lib), then operate on the stack root — the
-# parent dir holding .env / .env.symfony / docker-compose.yml.
+# dir holding .env / .env.symfony / docker-compose.yml.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "$SCRIPT_DIR/.."
+cd "${STACK_ROOT:-$SCRIPT_DIR/..}"
 
 # shellcheck source=clone/lib-db-url.sh
 . "$SCRIPT_DIR/lib-db-url.sh"

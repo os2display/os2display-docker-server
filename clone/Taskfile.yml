@@ -2,13 +2,14 @@ version: "3"
 silent: true
 
 # Standalone Taskfile for the stack-clone tooling. NOT included by the root
-# Taskfile — invoke it explicitly. The scripts self-locate (they cd to the
-# stack root that holds .env / .env.symfony), so the current directory does
-# not matter.
+# Taskfile — invoke it explicitly. THIS checkout is the clone's DESTINATION;
+# the operator points SOURCE at the running stack to clone. The scripts
+# self-locate (they cd to the stack root holding this clone/ directory), so
+# the current directory does not matter.
 #
-# Typical flow (run from the stack root):
+# Typical flow (run from a fresh checkout that will become the clone):
 #   task -t clone/Taskfile.yml init      # create clone/.env.clone from example
-#   $EDITOR clone/.env.clone             # set DEST / DOMAIN / CLONE_DATABASE_URL
+#   $EDITOR clone/.env.clone             # set SOURCE / DOMAIN / CLONE_DATABASE_URL
 #   task -t clone/Taskfile.yml clone     # repeatable — reuses clone/.env.clone
 #
 # Or just `cd clone && task <name>` (Task auto-discovers this Taskfile).
@@ -34,29 +35,33 @@ tasks:
           echo "clone/.env.clone already exists — edit it, or delete it to re-init."
         else
           cp "{{.DIR}}/.env.clone.example" "{{.DIR}}/.env.clone"
-          echo "Created clone/.env.clone — set DEST / DOMAIN / CLONE_DATABASE_URL, then run:"
+          echo "Created clone/.env.clone — set SOURCE / DOMAIN / CLONE_DATABASE_URL, then run:"
           echo "  task -t clone/Taskfile.yml clone"
         fi
 
   create-db:
     desc: |
-      Create the clone's database on the SAME server as the source (parsed from
-      DATABASE_URL), grant the app user access, and write the resulting
-      CLONE_DATABASE_URL into clone/.env.clone. Prompts for the DB admin (root)
-      password. Override with CLONE_DB_NAME=… (default <source-db>_clone) and
-      DB_ADMIN_USER=… (default root).
+      Create the clone's database on the source's EXTERNAL database server
+      (DATABASE_URL read from SOURCE/.env.local, .env.docker.local or
+      .env.symfony — first found), grant the app user access, and write the
+      resulting CLONE_DATABASE_URL into clone/.env.clone. Prompts for the
+      DB admin (root) password. Override with CLONE_DB_NAME=… (default
+      <source-db>_clone) and DB_ADMIN_USER=… (default root).
     cmds:
       - "{{.DIR}}/db-create.sh"
 
   clone:
     desc: |
-      Clone the stack using clone/.env.clone. Override any variable inline for a
-      one-off run, e.g. `DOMAIN=other.example.com task -t clone/Taskfile.yml clone`.
+      Clone the SOURCE stack into this checkout using clone/.env.clone. Override
+      any variable inline for a one-off run, e.g.
+      `DOMAIN=other.example.com task -t clone/Taskfile.yml clone`.
     cmds:
       - "{{.DIR}}/clone.sh"
 
   dump:
-    desc: Dump the source DATABASE_URL database to ./backup/<UTC-ts>.sql.gz (optional FILE=…)
+    desc: |
+      Dump this stack's DATABASE_URL database to ./backup/<UTC-ts>.sql.gz
+      (optional FILE=…; STACK_ROOT=… targets another stack root).
     cmds:
       - "{{.DIR}}/db-dump.sh {{.FILE}}"
 

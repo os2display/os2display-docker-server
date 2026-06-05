@@ -8,6 +8,9 @@
 # Run from the stack root, directly:
 #   clone/db-restore.sh backup/20260101T000000Z.sql.gz
 #
+# STACK_ROOT=<dir> overrides which stack to restore into (default: the parent
+# of this clone/ directory).
+#
 # Creates the target database if it does not exist (needs CREATE privilege).
 # DESTRUCTIVE: a dump containing DROP TABLE / CREATE TABLE overwrites the
 # matching tables in the target database. Take a fresh dump first if unsure.
@@ -17,9 +20,9 @@
 set -euo pipefail
 
 # Resolve our own dir (for the lib), then operate on the stack root — the
-# parent dir holding .env / .env.symfony / docker-compose.yml.
+# dir holding .env / .env.symfony / docker-compose.yml.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "$SCRIPT_DIR/.."
+cd "${STACK_ROOT:-$SCRIPT_DIR/..}"
 
 # shellcheck source=clone/lib-db-url.sh
 . "$SCRIPT_DIR/lib-db-url.sh"
