@@ -77,10 +77,11 @@ network from this host (the script warns if the source URL points at a docker-in
 task -t clone/Taskfile.yml create-db   # prompts for the DB admin (root) password
 ```
 
-It reads the source `DATABASE_URL` from the first of `SOURCE/.env.local`, `SOURCE/.env.docker.local` (1.x
-layouts) or `SOURCE/.env.symfony` (v3 layout) that defines it — so the source can be an old production install
-or an already-migrated v3 stack. It parses that URL for the server and app user, connects as the admin user
-(default `root` — **you are prompted for the password**), then on that same server:
+It reads the source database URL from the first of `SOURCE/.env.local`, `SOURCE/.env.docker.local` (1.x layouts,
+where the variable is named `APP_DATABASE_URL`) or `SOURCE/.env.symfony` (v3 layout, `DATABASE_URL`) that defines
+it — so the source can be an old production install or an already-migrated v3 stack. It parses that URL for the
+server and app user, connects as the admin user (default `root` — **you are prompted for the password**), then on
+that same server:
 
 - creates the clone database (default name `<source-db>_clone`, override with `CLONE_DB_NAME=…`), mirroring the
   source DB's charset/collation;

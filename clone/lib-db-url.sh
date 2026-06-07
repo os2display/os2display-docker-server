@@ -17,17 +17,19 @@
 # (host=mariadb on the app network) and an external host (public DNS, reached
 # via the app network's egress).
 
-# read_database_url [FILE]
-#   Print the DATABASE_URL value from FILE (default .env.symfony), with any
-#   surrounding single/double quotes stripped. Returns non-zero if absent.
+# read_database_url [FILE] [VAR]
+#   Print the VAR value (default DATABASE_URL) from FILE (default
+#   .env.symfony), with any surrounding single/double quotes stripped.
+#   Returns non-zero if absent. VAR exists for the 1.x layout, which named
+#   the variable APP_DATABASE_URL.
 read_database_url() {
-  local f="${1:-.env.symfony}" line
-  line=$(grep -E '^DATABASE_URL=' "$f" | head -1) || true
+  local f="${1:-.env.symfony}" var="${2:-DATABASE_URL}" line
+  line=$(grep -E "^${var}=" "$f" | head -1) || true
   if [ -z "$line" ]; then
-    echo "Error: DATABASE_URL not found in $f" >&2
+    echo "Error: ${var} not found in $f" >&2
     return 1
   fi
-  line="${line#DATABASE_URL=}"
+  line="${line#"${var}"=}"
   # Strip one layer of surrounding quotes (either kind).
   line="${line%\"}"; line="${line#\"}"
   line="${line%\'}"; line="${line#\'}"

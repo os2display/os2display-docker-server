@@ -4,12 +4,12 @@
 # write the resulting CLONE_DATABASE_URL into clone/.env.clone so `clone.sh`
 # can use it.
 #
-# The source DATABASE_URL is read from the first of SOURCE/.env.local,
-# SOURCE/.env.docker.local (1.x layouts) or SOURCE/.env.symfony (v3 layout)
-# that defines it — SOURCE comes from clone/.env.clone or the environment.
-# It parses that URL for the server host/port and the application user,
-# connects as a DB ADMIN (root by default — you are prompted for the
-# password), and:
+# The source database URL is read from the first of SOURCE/.env.local,
+# SOURCE/.env.docker.local (1.x layouts, variable APP_DATABASE_URL) or
+# SOURCE/.env.symfony (v3 layout, DATABASE_URL) that defines it — SOURCE
+# comes from clone/.env.clone or the environment. It parses that URL for the
+# server host/port and the application user, connects as a DB ADMIN (root by
+# default — you are prompted for the password), and:
 #   - CREATE DATABASE IF NOT EXISTS <clone-db>  (mirroring the source DB's
 #     charset/collation),
 #   - CREATE USER IF NOT EXISTS for the app user @'%' with the source password,
@@ -33,7 +33,7 @@
 #   DB_ADMIN_USER=<user>      admin user to connect as (default: root)
 #   DB_ADMIN_PASSWORD=<pw>    admin password (skips the prompt; for CI)
 #
-# Requires: docker, a DATABASE_URL in one of the SOURCE env files above.
+# Requires: docker, a database URL in one of the SOURCE env files above.
 
 set -euo pipefail
 
@@ -53,25 +53,31 @@ SOURCE="$(cd "$SOURCE" 2>/dev/null && pwd)" || {
   echo "Error: SOURCE directory not found." >&2
   exit 1
 }
-# Find the source DATABASE_URL. 1.x installs keep it in .env.local or
-# .env.docker.local; the v3 layout in .env.symfony. First file that defines
-# it wins — so this works whether the source is the old production layout or
-# an already-migrated v3 stack.
-SRC_ENV_FILE=""
+# Find the source database URL. 1.x installs keep it as APP_DATABASE_URL in
+# .env.local or .env.docker.local; the v3 layout as DATABASE_URL in
+# .env.symfony. First file/variable that matches wins — so this works whether
+# the source is the old production layout or an already-migrated v3 stack
+# (both variable names are tried in every file, v1 name first).
+SRC_ENV_FILE="" SRC_DB_VAR=""
 for f in .env.local .env.docker.local .env.symfony; do
-  if [ -f "$SOURCE/$f" ] && grep -qE '^DATABASE_URL=' "$SOURCE/$f"; then
-    SRC_ENV_FILE="$SOURCE/$f"
-    break
-  fi
+  [ -f "$SOURCE/$f" ] || continue
+  for v in APP_DATABASE_URL DATABASE_URL; do
+    if grep -qE "^${v}=" "$SOURCE/$f"; then
+      SRC_ENV_FILE="$SOURCE/$f"
+      SRC_DB_VAR="$v"
+      break 2
+    fi
+  done
 done
 [ -n "$SRC_ENV_FILE" ] || {
-  echo "Error: no DATABASE_URL found in $SOURCE/.env.local, .env.docker.local" >&2
-  echo "       or .env.symfony — is SOURCE a configured stack root?" >&2
+  echo "Error: no APP_DATABASE_URL (1.x) or DATABASE_URL (v3) found in" >&2
+  echo "       $SOURCE/.env.local, .env.docker.local or .env.symfony —" >&2
+  echo "       is SOURCE a configured stack root?" >&2
   exit 1
 }
-echo "Source DATABASE_URL from ${SRC_ENV_FILE}"
+echo "Source ${SRC_DB_VAR} from ${SRC_ENV_FILE}"
 
-SRC_URL=$(read_database_url "$SRC_ENV_FILE")
+SRC_URL=$(read_database_url "$SRC_ENV_FILE" "$SRC_DB_VAR")
 db_url_parse "$SRC_URL" # sets DB_USER/DB_PASS/DB_HOST/DB_PORT/DB_NAME (query stripped)
 
 # External-server assumption: the host must be reachable from this machine —

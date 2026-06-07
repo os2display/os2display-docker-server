@@ -42,8 +42,9 @@ tasks:
   create-db:
     desc: |
       Create the clone's database on the source's EXTERNAL database server
-      (DATABASE_URL read from SOURCE/.env.local, .env.docker.local or
-      .env.symfony — first found), grant the app user access, and write the
+      (APP_DATABASE_URL — 1.x — or DATABASE_URL read from SOURCE/.env.local,
+      .env.docker.local or .env.symfony, first found), grant the app user
+      access, and write the
       resulting CLONE_DATABASE_URL into clone/.env.clone. Prompts for the
       DB admin (root) password. Override with CLONE_DB_NAME=… (default
       <source-db>_clone) and DB_ADMIN_USER=… (default root).
