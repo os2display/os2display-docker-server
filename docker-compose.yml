@@ -33,6 +33,13 @@ services:
     logging: *default-logging
     networks:
       - app
+    # Reach a database that runs on the docker host (a DATABASE_URL pointing at
+    # host.docker.internal) by mapping that alias to the host gateway. Linux
+    # doesn't provide the alias inside containers otherwise; Docker Desktop
+    # does, and re-adding it there is harmless. When the DB is elsewhere the
+    # entry is simply unused.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     # Symfony app config (APP_SECRET, DATABASE_URL, JWT, OIDC, ADMIN_*,
     # CLIENT_*, ...) lives in .env.symfony — bootstrapped from the API image's
     # /app/.env via `task env:init`.
