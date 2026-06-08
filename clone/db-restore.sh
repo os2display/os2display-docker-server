@@ -36,24 +36,26 @@ FILE="${1:-${FILE:-}}"
   echo "Error: dump file '$FILE' not found." >&2
   exit 1
 }
-[ -f .env.symfony ] || {
-  echo "Error: .env.symfony missing — run 'task env:init' first." >&2
+TARGET_URL=$(find_database_url .) || {
+  echo "Error: no DATABASE_URL (v3) or APP_DATABASE_URL (v1) found here." >&2
+  echo "       Looked in .env.local, .env.docker.local, .env.symfony." >&2
   exit 1
 }
-
-db_url_parse "$(read_database_url .env.symfony)"
+db_url_parse "$TARGET_URL"
 PROJECT=$(compose_project)
 TAG=$(mariadb_tag)
 
+# Network selection mirrors db-dump.sh: a host.docker.internal target (clone DB
+# on the docker host) uses the default bridge + host-gateway mapping; otherwise
+# attach to the project's app network when present (bundled `host=mariadb`).
 net_args=()
-NET=$(app_network "$PROJECT")
-[ -n "$NET" ] && net_args=(--network "$NET")
-
-# host.docker.internal only resolves inside a container on Linux when mapped to
-# the host gateway (the clone DB may live on the docker host via that alias);
-# harmless for real external hostnames.
 hostmap_args=()
-[ "$DB_HOST" = "host.docker.internal" ] && hostmap_args=(--add-host=host.docker.internal:host-gateway)
+if [ "$DB_HOST" = "host.docker.internal" ]; then
+  hostmap_args=(--add-host=host.docker.internal:host-gateway)
+else
+  NET=$(app_network "$PROJECT")
+  [ -n "$NET" ] && net_args=(--network "$NET")
+fi
 
 echo "Restoring '${FILE}' into '${DB_NAME}' at ${DB_HOST}:${DB_PORT}${NET:+ (via ${NET})}..."
 

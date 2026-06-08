@@ -36,6 +36,46 @@ read_database_url() {
   printf '%s' "$line"
 }
 
+# find_database_url [DIR]
+#   Echo the database URL from a v1 OR v3 stack rooted at DIR (default cwd),
+#   scanning .env.local, .env.docker.local, .env.symfony for APP_DATABASE_URL
+#   (the 1.x itk-dev hosting name) then DATABASE_URL (v3); first match wins.
+#   Returns non-zero (no output) if none is found.
+find_database_url() {
+  local dir="${1:-.}" f v
+  for f in .env.local .env.docker.local .env.symfony; do
+    [ -f "$dir/$f" ] || continue
+    for v in APP_DATABASE_URL DATABASE_URL; do
+      if grep -qE "^${v}=" "$dir/$f"; then
+        read_database_url "$dir/$f" "$v"
+        return 0
+      fi
+    done
+  done
+  return 1
+}
+
+# env_get DIR VAR
+#   Echo the first VAR=value found across DIR's env files (.env, .env.local,
+#   .env.docker.local, .env.symfony), with surrounding quotes stripped.
+#   Returns non-zero if the variable is set nowhere. Used to read source
+#   values that live under different names/files in v1 vs v3 layouts.
+env_get() {
+  local dir="$1" var="$2" f line
+  for f in .env .env.local .env.docker.local .env.symfony; do
+    [ -f "$dir/$f" ] || continue
+    line=$(grep -E "^${var}=" "$dir/$f" | head -1) || true
+    if [ -n "$line" ]; then
+      line="${line#"${var}"=}"
+      line="${line%\"}"; line="${line#\"}"
+      line="${line%\'}"; line="${line#\'}"
+      printf '%s' "$line"
+      return 0
+    fi
+  done
+  return 1
+}
+
 # db_url_parse URL
 #   Parse a mysql://USER:PASS@HOST[:PORT]/DBNAME[?query] URL into globals
 #   DB_USER, DB_PASS, DB_HOST, DB_PORT, DB_NAME. The password is %XX-decoded

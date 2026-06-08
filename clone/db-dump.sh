@@ -28,24 +28,29 @@ cd "${STACK_ROOT:-$SCRIPT_DIR/..}"
 # shellcheck source=clone/lib-db-url.sh
 . "$SCRIPT_DIR/lib-db-url.sh"
 
-[ -f .env.symfony ] || {
-  echo "Error: .env.symfony missing — run 'task env:init' first." >&2
+SRC_URL=$(find_database_url .) || {
+  echo "Error: no DATABASE_URL (v3) or APP_DATABASE_URL (v1) found here." >&2
+  echo "       Looked in .env.local, .env.docker.local, .env.symfony." >&2
   exit 1
 }
-
-db_url_parse "$(read_database_url .env.symfony)"
+db_url_parse "$SRC_URL"
 PROJECT=$(compose_project)
 TAG=$(mariadb_tag)
 
+# Network selection:
+#   - host.docker.internal (DB on the docker host, e.g. a v1 install): use the
+#     default bridge and map the alias to the host gateway. An app network —
+#     possibly `internal:` — is the wrong path and may lack the route.
+#   - otherwise: attach to the project's app network when present, so a bundled
+#     `host=mariadb` URL resolves; real external hosts work either way.
 net_args=()
-NET=$(app_network "$PROJECT")
-[ -n "$NET" ] && net_args=(--network "$NET")
-
-# host.docker.internal only resolves inside a container on Linux when mapped to
-# the host gateway (a v1 source often reaches its DB via that alias); harmless
-# for real external hostnames.
 hostmap_args=()
-[ "$DB_HOST" = "host.docker.internal" ] && hostmap_args=(--add-host=host.docker.internal:host-gateway)
+if [ "$DB_HOST" = "host.docker.internal" ]; then
+  hostmap_args=(--add-host=host.docker.internal:host-gateway)
+else
+  NET=$(app_network "$PROJECT")
+  [ -n "$NET" ] && net_args=(--network "$NET")
+fi
 
 mkdir -p backup
 OUT="${1:-}"

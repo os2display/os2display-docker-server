@@ -53,8 +53,10 @@ tasks:
 
   clone:
     desc: |
-      Clone the SOURCE stack into this checkout using clone/.env.clone. Override
-      any variable inline for a one-off run, e.g.
+      Make a faithful 1:1 copy of the v1 SOURCE install into this checkout
+      (data + media + jwt + operator env, retargeted to DOMAIN and the clone
+      DB) using clone/.env.clone. Does NOT convert to v3 — run env:migrate +
+      app:update afterwards. Override a var inline for a one-off run, e.g.
       `DOMAIN=other.example.com task -t clone/Taskfile.yml clone`.
     cmds:
       - "{{.DIR}}/clone.sh"
