@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 #
-# Load a SQL dump (.sql or .sql.gz) into the database referenced by
-# DATABASE_URL in .env.symfony. Counterpart to clone/db-dump.sh — same
-# transient-client approach, so it works for the bundled DB and an external
-# one alike (see clone/lib-db-url.sh).
+# Load a SQL dump (.sql or .sql.gz) into the stack's database, using the HOST's
+# mariadb client (no transient container). Counterpart to clone/db-dump.sh.
+#
+# It finds the URL across layouts — APP_DATABASE_URL (v1) or DATABASE_URL (v3).
+# A host.docker.internal URL (DB on the docker host) is reached from the host
+# itself at 127.0.0.1.
 #
 # Run from the stack root, directly:
 #   clone/db-restore.sh backup/20260101T000000Z.sql.gz
@@ -15,7 +17,8 @@
 # DESTRUCTIVE: a dump containing DROP TABLE / CREATE TABLE overwrites the
 # matching tables in the target database. Take a fresh dump first if unsure.
 #
-# Requires: docker, a readable .env.symfony with DATABASE_URL.
+# Requires: a mariadb client + gzip on the host, and a readable env file with
+# APP_DATABASE_URL / DATABASE_URL.
 
 set -euo pipefail
 
@@ -42,27 +45,15 @@ TARGET_URL=$(find_database_url .) || {
   exit 1
 }
 db_url_parse "$TARGET_URL"
-PROJECT=$(compose_project)
-TAG=$(mariadb_tag)
+require_mariadb_client
+CLIENT=$(mariadb_client_bin)
+CONNECT_HOST=$(db_connect_host "$DB_HOST")
 
-# Network selection mirrors db-dump.sh: a host.docker.internal target (clone DB
-# on the docker host) uses the default bridge + host-gateway mapping; otherwise
-# attach to the project's app network when present (bundled `host=mariadb`).
-net_args=()
-hostmap_args=()
-if [ "$DB_HOST" = "host.docker.internal" ]; then
-  hostmap_args=(--add-host=host.docker.internal:host-gateway)
-else
-  NET=$(app_network "$PROJECT")
-  [ -n "$NET" ] && net_args=(--network "$NET")
-fi
-
-echo "Restoring '${FILE}' into '${DB_NAME}' at ${DB_HOST}:${DB_PORT}${NET:+ (via ${NET})}..."
+echo "Restoring '${FILE}' into '${DB_NAME}' at ${CONNECT_HOST}:${DB_PORT}..."
 
 # Ensure the target database exists (no-op if it already does). Connect
 # without selecting a database so this works on a brand-new clone DB.
-docker run -i --rm "${net_args[@]}" "${hostmap_args[@]}" -e MYSQL_PWD="$DB_PASS" "mariadb:${TAG}" \
-  mariadb --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USER" \
+MYSQL_PWD="$DB_PASS" "$CLIENT" --host="$CONNECT_HOST" --port="$DB_PORT" --user="$DB_USER" \
   -e "CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\`;"
 
 # Stream the dump into the client. gzip -dc transparently handles .gz;
@@ -73,7 +64,7 @@ case "$FILE" in
   *) reader=(cat) ;;
 esac
 
-"${reader[@]}" "$FILE" | docker run -i --rm "${net_args[@]}" "${hostmap_args[@]}" -e MYSQL_PWD="$DB_PASS" "mariadb:${TAG}" \
-  mariadb --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USER" "$DB_NAME"
+"${reader[@]}" "$FILE" | MYSQL_PWD="$DB_PASS" "$CLIENT" \
+  --host="$CONNECT_HOST" --port="$DB_PORT" --user="$DB_USER" "$DB_NAME"
 
 echo "Restore complete."

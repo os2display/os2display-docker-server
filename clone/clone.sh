@@ -39,7 +39,7 @@
 # Run from this checkout's root (or via `task -t clone/Taskfile.yml clone`):
 #   clone/clone.sh
 #
-# Requires: docker, rsync.
+# Requires: rsync, a mariadb client + gzip on the host (for the dump/restore).
 
 set -euo pipefail
 

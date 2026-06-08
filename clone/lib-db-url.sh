@@ -107,29 +107,35 @@ db_url_parse() {
   DB_PASS=$(printf '%b' "${DB_PASS//%/\\x}")
 }
 
-# compose_project
-#   Echo COMPOSE_PROJECT_NAME from .env, defaulting to "os2display".
-compose_project() {
-  local p
-  p=$(grep -E '^COMPOSE_PROJECT_NAME=' .env 2>/dev/null | head -1 | cut -d= -f2-) || true
-  printf '%s' "${p:-os2display}"
+# The clone DB tooling runs the HOST's mariadb client directly (no transient
+# container), so it connects from the host rather than a docker bridge — which
+# also means root/admin access is evaluated for the host, not a container IP.
+
+# require_mariadb_client
+#   Assert a mariadb (or mysql) client is on PATH; error with install guidance.
+require_mariadb_client() {
+  command -v mariadb >/dev/null 2>&1 || command -v mysql >/dev/null 2>&1 || {
+    echo "Error: no 'mariadb' (or 'mysql') client on PATH." >&2
+    echo "       Install the MariaDB client, e.g. 'apt-get install -y mariadb-client'." >&2
+    return 1
+  }
 }
 
-# mariadb_tag
-#   Echo the mariadb image tag pinned in docker-compose.yml (e.g. 11.4.10),
-#   falling back to a sane default if the line moves. The transient client
-#   uses this so its tooling matches the server version.
-mariadb_tag() {
-  local t
-  t=$(awk -F: '/^[[:space:]]+image:[[:space:]]+mariadb:/ {gsub(/ /,"",$NF); print $NF; exit}' docker-compose.yml) || true
-  printf '%s' "${t:-11.4.10}"
+# mariadb_client_bin / mariadb_dump_bin
+#   Echo the client / dump binary name, preferring the mariadb-named tools and
+#   falling back to the mysql-named ones.
+mariadb_client_bin() {
+  if command -v mariadb >/dev/null 2>&1; then printf 'mariadb'; else printf 'mysql'; fi
+}
+mariadb_dump_bin() {
+  if command -v mariadb-dump >/dev/null 2>&1; then printf 'mariadb-dump'; else printf 'mysqldump'; fi
 }
 
-# app_network PROJECT
-#   Echo the project's `<project>_app` docker network name if it exists,
-#   else nothing. Callers attach the transient client to it when present so
-#   a bundled `host=mariadb` URL resolves; when absent (stack down, external
-#   DB) the client falls back to the default bridge, which still has egress.
-app_network() {
-  docker network ls --format '{{.Name}}' | grep -E "^${1}_app$" | head -1 || true
+# db_connect_host HOST
+#   Translate a docker-internal alias to a host-local address for a client
+#   running ON the host: host.docker.internal (a DB on the docker host, as in a
+#   v1 install) is reached from the host itself at 127.0.0.1. Everything else
+#   is returned unchanged.
+db_connect_host() {
+  if [ "$1" = "host.docker.internal" ]; then printf '127.0.0.1'; else printf '%s' "$1"; fi
 }

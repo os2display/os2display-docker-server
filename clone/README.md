@@ -37,7 +37,8 @@ prints the steps), then bring it up with the normal v3 tasks.
 - The **v1 source** install, reachable on disk, with `.env.docker.local` (`APP_DATABASE_URL`).
 - A **separate database** for the clone. `CLONE_DATABASE_URL` must differ from the source; the script aborts if
   they match. `create-db` (below) can provision it on the source's own DB server.
-- `docker` and `rsync` on the host running the script.
+- A **`mariadb` client** + `gzip` + `rsync` on the host. The DB tooling runs the host's `mariadb` /
+  `mariadb-dump` directly (no container) and connects from the host itself.
 
 ## Usage
 
@@ -67,8 +68,8 @@ task console -- --user deploy app:update           # migrate the DB schema to v3
 ### Provisioning the clone database (same server as the source)
 
 `create-db` provisions the clone DB on the source's **own database server** instead of you hand-crafting
-`CLONE_DATABASE_URL`. The server is assumed reachable over the network from this host (when the source URL uses
-`host.docker.internal` — a DB on the docker host — the client is given the matching host-gateway mapping):
+`CLONE_DATABASE_URL`. It runs the host's `mariadb` client and connects from the host; a `host.docker.internal`
+URL (a DB on the docker host) is reached from the host itself at `127.0.0.1`:
 
 ```bash
 task -t clone/Taskfile.yml create-db   # prompts for the DB admin (root) password
@@ -107,8 +108,8 @@ You can also bypass Task and call the scripts directly (they load `clone/.env.cl
 ## The dump / restore scripts
 
 `clone.sh` uses these two; both are usable on their own (as `task -t clone/Taskfile.yml dump` / `restore`, or
-directly). They find the database URL across layouts — `APP_DATABASE_URL` (v1) or `DATABASE_URL` (v3) — and drive
-a transient `mariadb` client, so they work wherever the database lives. They operate on **this** stack root by
+directly). They find the database URL across layouts — `APP_DATABASE_URL` (v1) or `DATABASE_URL` (v3) — and run
+the **host's** `mariadb` / `mariadb-dump` directly (no container). They operate on **this** stack root by
 default; `STACK_ROOT=<dir>` points them at another stack (that's how `clone.sh` dumps the source).
 
 ```bash
@@ -118,16 +119,16 @@ clone/db-dump.sh backup/my-dump.sql.gz   # explicit output path
 clone/db-restore.sh backup/<ts>.sql.gz   # load a dump back in (DESTRUCTIVE — overwrites matching tables)
 ```
 
-`clone/lib-db-url.sh` is the shared helper (URL parsing, layout-aware URL/var lookup, project / image-tag /
-network resolution); it's sourced, not executed.
+`clone/lib-db-url.sh` is the shared helper (URL parsing, layout-aware URL/var lookup, client-binary + connect-host
+resolution); it's sourced, not executed.
 
 ## Notes and limitations
 
-- **`host.docker.internal` databases.** When the source (and thus the clone) DB is reached via
-  `host.docker.internal`, the transient client is run on the default docker bridge with
-  `--add-host=host.docker.internal:host-gateway` so the alias resolves on Linux. The eventual **v3 stack** will
-  need the same mapping at runtime — add `extra_hosts: ["host.docker.internal:host-gateway"]` to the `os2display`
-  service (e.g. via a compose override) when you bring the converted clone up.
-- **Admin/root remote access.** `create-db` connects from a container, i.e. the docker gateway IP — not
-  `localhost`. The DB must allow the admin user from that address (or use `DB_ADMIN_USER=` for one that is).
+- **The host's `mariadb` client is used directly** — no transient container. A `host.docker.internal` URL (a DB
+  on the docker host) is reached from the host itself at `127.0.0.1`; real hostnames are used as-is. The admin
+  connection in `create-db` is therefore evaluated for the **host** (e.g. `root@127.0.0.1`/`root@'%'`), not a
+  container gateway IP — which is what made root access work here.
+- **The eventual v3 stack** (after conversion) runs in containers, so it still needs `host.docker.internal` mapped
+  at runtime — add `extra_hosts: ["host.docker.internal:host-gateway"]` to the `os2display` service (e.g. via a
+  compose override) when you bring the converted clone up.
 - Run multiple clones by giving each its own checkout (and thus `CLONE_PROJECT`).

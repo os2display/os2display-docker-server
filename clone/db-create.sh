@@ -20,9 +20,11 @@
 # URL with the database segment swapped. Production data is untouched: the
 # clone is a separate schema on the same server.
 #
-# The database server is assumed EXTERNAL — reachable from this host over the
-# network. The transient mariadb client runs on the default docker bridge; a
-# docker-internal hostname (a bundled `host=mariadb` URL) won't resolve there.
+# It uses the HOST's mariadb client directly (no transient container) — so the
+# admin connection is evaluated for the host, not a container IP. The DB server
+# must be reachable from this host: a host.docker.internal URL (DB on the docker
+# host) is reached from the host itself at 127.0.0.1; a real hostname is used
+# as-is.
 #
 # Run from this checkout's root (or via `task -t clone/Taskfile.yml create-db`):
 #   clone/db-create.sh
@@ -33,7 +35,8 @@
 #   DB_ADMIN_USER=<user>      admin user to connect as (default: root)
 #   DB_ADMIN_PASSWORD=<pw>    admin password (skips the prompt; for CI)
 #
-# Requires: docker, a database URL in one of the SOURCE env files above.
+# Requires: a mariadb client on the host, and a database URL in one of the
+# SOURCE env files above.
 
 set -euo pipefail
 
@@ -80,16 +83,11 @@ echo "Source ${SRC_DB_VAR} from ${SRC_ENV_FILE}"
 SRC_URL=$(read_database_url "$SRC_ENV_FILE" "$SRC_DB_VAR")
 db_url_parse "$SRC_URL" # sets DB_USER/DB_PASS/DB_HOST/DB_PORT/DB_NAME (query stripped)
 
-# External-server assumption: the host must be reachable from this machine —
-# a docker-internal name (bundled DB) won't resolve from the default bridge.
-case "$DB_HOST" in
-  *.*) ;;
-  *)
-    echo "Warning: source DB host '$DB_HOST' looks like a docker-internal name," >&2
-    echo "         not an external server — this script assumes an EXTERNAL" >&2
-    echo "         database reachable from this host. Continuing anyway." >&2
-    ;;
-esac
+require_mariadb_client
+CLIENT=$(mariadb_client_bin)
+# A host.docker.internal URL (DB on the docker host) is reached from the host
+# itself at 127.0.0.1; a real hostname is used as-is.
+CONNECT_HOST=$(db_connect_host "$DB_HOST")
 
 CLONE_DB_NAME="${CLONE_DB_NAME:-${DB_NAME}_clone}"
 ADMIN_USER="${DB_ADMIN_USER:-root}"
@@ -108,18 +106,6 @@ if [ "$CLONE_DB_NAME" = "$DB_NAME" ]; then
   exit 1
 fi
 
-# Client tag from THIS checkout's compose pin — the server is external, so
-# there's no local container to match; any recent mariadb client will do.
-# No --network: the default bridge has egress to the external host.
-TAG=$(mariadb_tag)
-
-# host.docker.internal only resolves inside a container on Linux when mapped to
-# the host gateway. A v1 install commonly reaches a MariaDB on the docker host
-# via that alias; add the mapping so the transient client can connect. Harmless
-# for real external hostnames.
-hostmap_args=()
-[ "$DB_HOST" = "host.docker.internal" ] && hostmap_args=(--add-host=host.docker.internal:host-gateway)
-
 # Build the clone URL: source URL with the database segment swapped, query
 # (serverVersion=…) preserved verbatim, credentials untouched.
 SRC_PREFIX="${SRC_URL%%\?*}"           # mysql://user:pass@host:port/dbname
@@ -133,7 +119,7 @@ CLONE_DATABASE_URL="${SRC_BASE}/${CLONE_DB_NAME}${SRC_QUERY}"
 if [ -n "${DB_ADMIN_PASSWORD:-}" ]; then
   ADMIN_PW="$DB_ADMIN_PASSWORD"
 elif [ -r /dev/tty ]; then
-  printf "Password for DB admin user '%s'@%s: " "$ADMIN_USER" "$DB_HOST" >&2
+  printf "Password for DB admin user '%s'@%s: " "$ADMIN_USER" "$CONNECT_HOST" >&2
   read -rs ADMIN_PW </dev/tty
   printf '\n' >&2
 else
@@ -146,14 +132,13 @@ fi
   exit 1
 }
 
-echo "Creating database '${CLONE_DB_NAME}' on ${DB_HOST}:${DB_PORT}..."
+echo "Creating database '${CLONE_DB_NAME}' on ${CONNECT_HOST}:${DB_PORT}..."
 
 # Mirror the source database's default charset/collation onto the clone, so
 # any post-restore migration that creates a table without an explicit charset
 # matches the source. -N -B → bare, tab-separated output.
 read -r SRC_CS SRC_COLL < <(
-  docker run -i --rm "${hostmap_args[@]}" -e MYSQL_PWD="$ADMIN_PW" "mariadb:${TAG}" \
-    mariadb --host="$DB_HOST" --port="$DB_PORT" --user="$ADMIN_USER" -N -B \
+  MYSQL_PWD="$ADMIN_PW" "$CLIENT" --host="$CONNECT_HOST" --port="$DB_PORT" --user="$ADMIN_USER" -N -B \
     -e "SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='${DB_NAME}';"
 ) || {
   echo "Error: could not query the source database charset (check admin credentials/host)." >&2
@@ -176,8 +161,8 @@ CREATE USER IF NOT EXISTS '${DB_USER}'@'%' IDENTIFIED BY '${ESC_APP_PW}';
 GRANT ALL PRIVILEGES ON \`${CLONE_DB_NAME}\`.* TO '${DB_USER}'@'%';
 FLUSH PRIVILEGES;"
 
-printf '%s\n' "$SQL" | docker run -i --rm "${hostmap_args[@]}" -e MYSQL_PWD="$ADMIN_PW" "mariadb:${TAG}" \
-  mariadb --host="$DB_HOST" --port="$DB_PORT" --user="$ADMIN_USER"
+printf '%s\n' "$SQL" | MYSQL_PWD="$ADMIN_PW" "$CLIENT" \
+  --host="$CONNECT_HOST" --port="$DB_PORT" --user="$ADMIN_USER"
 
 # Write CLONE_DATABASE_URL into clone/.env.clone so the clone task picks it up.
 sed_inplace() {
