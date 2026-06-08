@@ -49,11 +49,17 @@ net_args=()
 NET=$(app_network "$PROJECT")
 [ -n "$NET" ] && net_args=(--network "$NET")
 
+# host.docker.internal only resolves inside a container on Linux when mapped to
+# the host gateway (the clone DB may live on the docker host via that alias);
+# harmless for real external hostnames.
+hostmap_args=()
+[ "$DB_HOST" = "host.docker.internal" ] && hostmap_args=(--add-host=host.docker.internal:host-gateway)
+
 echo "Restoring '${FILE}' into '${DB_NAME}' at ${DB_HOST}:${DB_PORT}${NET:+ (via ${NET})}..."
 
 # Ensure the target database exists (no-op if it already does). Connect
 # without selecting a database so this works on a brand-new clone DB.
-docker run -i --rm "${net_args[@]}" -e MYSQL_PWD="$DB_PASS" "mariadb:${TAG}" \
+docker run -i --rm "${net_args[@]}" "${hostmap_args[@]}" -e MYSQL_PWD="$DB_PASS" "mariadb:${TAG}" \
   mariadb --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USER" \
   -e "CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\`;"
 
@@ -65,7 +71,7 @@ case "$FILE" in
   *) reader=(cat) ;;
 esac
 
-"${reader[@]}" "$FILE" | docker run -i --rm "${net_args[@]}" -e MYSQL_PWD="$DB_PASS" "mariadb:${TAG}" \
+"${reader[@]}" "$FILE" | docker run -i --rm "${net_args[@]}" "${hostmap_args[@]}" -e MYSQL_PWD="$DB_PASS" "mariadb:${TAG}" \
   mariadb --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USER" "$DB_NAME"
 
 echo "Restore complete."

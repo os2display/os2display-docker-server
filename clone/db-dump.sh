@@ -41,6 +41,12 @@ net_args=()
 NET=$(app_network "$PROJECT")
 [ -n "$NET" ] && net_args=(--network "$NET")
 
+# host.docker.internal only resolves inside a container on Linux when mapped to
+# the host gateway (a v1 source often reaches its DB via that alias); harmless
+# for real external hostnames.
+hostmap_args=()
+[ "$DB_HOST" = "host.docker.internal" ] && hostmap_args=(--add-host=host.docker.internal:host-gateway)
+
 mkdir -p backup
 OUT="${1:-}"
 [ -n "$OUT" ] || OUT="backup/$(date -u +%Y%m%dT%H%M%SZ).sql.gz"
@@ -51,7 +57,7 @@ echo "Dumping '${DB_NAME}' from ${DB_HOST}:${DB_PORT} to ${OUT}${NET:+ (via ${NE
 # least-privilege external DB users often lack. --single-transaction keeps
 # the dump consistent without locking (InnoDB), so there's no downtime.
 # MYSQL_PWD passes the password without exposing it on the client argv.
-docker run -i --rm "${net_args[@]}" -e MYSQL_PWD="$DB_PASS" "mariadb:${TAG}" \
+docker run -i --rm "${net_args[@]}" "${hostmap_args[@]}" -e MYSQL_PWD="$DB_PASS" "mariadb:${TAG}" \
   mariadb-dump \
   --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USER" \
   --single-transaction --quick --routines --triggers --events \

@@ -113,6 +113,13 @@ fi
 # No --network: the default bridge has egress to the external host.
 TAG=$(mariadb_tag)
 
+# host.docker.internal only resolves inside a container on Linux when mapped to
+# the host gateway. A v1 install commonly reaches a MariaDB on the docker host
+# via that alias; add the mapping so the transient client can connect. Harmless
+# for real external hostnames.
+hostmap_args=()
+[ "$DB_HOST" = "host.docker.internal" ] && hostmap_args=(--add-host=host.docker.internal:host-gateway)
+
 # Build the clone URL: source URL with the database segment swapped, query
 # (serverVersion=…) preserved verbatim, credentials untouched.
 SRC_PREFIX="${SRC_URL%%\?*}"           # mysql://user:pass@host:port/dbname
@@ -145,7 +152,7 @@ echo "Creating database '${CLONE_DB_NAME}' on ${DB_HOST}:${DB_PORT}..."
 # any post-restore migration that creates a table without an explicit charset
 # matches the source. -N -B → bare, tab-separated output.
 read -r SRC_CS SRC_COLL < <(
-  docker run -i --rm -e MYSQL_PWD="$ADMIN_PW" "mariadb:${TAG}" \
+  docker run -i --rm "${hostmap_args[@]}" -e MYSQL_PWD="$ADMIN_PW" "mariadb:${TAG}" \
     mariadb --host="$DB_HOST" --port="$DB_PORT" --user="$ADMIN_USER" -N -B \
     -e "SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='${DB_NAME}';"
 ) || {
@@ -169,7 +176,7 @@ CREATE USER IF NOT EXISTS '${DB_USER}'@'%' IDENTIFIED BY '${ESC_APP_PW}';
 GRANT ALL PRIVILEGES ON \`${CLONE_DB_NAME}\`.* TO '${DB_USER}'@'%';
 FLUSH PRIVILEGES;"
 
-printf '%s\n' "$SQL" | docker run -i --rm -e MYSQL_PWD="$ADMIN_PW" "mariadb:${TAG}" \
+printf '%s\n' "$SQL" | docker run -i --rm "${hostmap_args[@]}" -e MYSQL_PWD="$ADMIN_PW" "mariadb:${TAG}" \
   mariadb --host="$DB_HOST" --port="$DB_PORT" --user="$ADMIN_USER"
 
 # Write CLONE_DATABASE_URL into clone/.env.clone so the clone task picks it up.
