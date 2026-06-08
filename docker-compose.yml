@@ -95,18 +95,25 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    # Router + middleware names are prefixed with ${COMPOSE_PROJECT_NAME} so
+    # multiple stacks can share one Traefik without colliding. Traefik keys
+    # routers/middlewares by name across all containers it discovers, so two
+    # stacks each defining a router literally named `apios2display` would clash
+    # (one silently shadows the other). The project prefix keeps them distinct
+    # — e.g. a `clone`d staging stack alongside production, or a v3 stack beside
+    # a legacy v1 one.
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=frontend"
-      - "traefik.http.routers.apios2display-http.rule=Host(`${OS2DISPLAY_SERVER_DOMAIN}`)"
-      - "traefik.http.routers.apios2display-http.entrypoints=web"
-      - "traefik.http.routers.apios2display-http.middlewares=redirect-to-https"
-      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
-      - "traefik.http.routers.apios2display.rule=Host(`${OS2DISPLAY_SERVER_DOMAIN}`)"
-      - "traefik.http.routers.apios2display.entrypoints=websecure"
-      - "traefik.http.routers.apios2display.middlewares=redirect-to-admin"
-      - "traefik.http.middlewares.redirect-to-admin.redirectregex.regex=^https:\\/\\/([^\\/]+)\\/?$$"
-      - "traefik.http.middlewares.redirect-to-admin.redirectregex.replacement=https://$$1${OS2DISPLAY_ADMIN_CLIENT_PATH}"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-api-http.rule=Host(`${OS2DISPLAY_SERVER_DOMAIN}`)"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-api-http.entrypoints=web"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-api-http.middlewares=${COMPOSE_PROJECT_NAME}-redirect-to-https"
+      - "traefik.http.middlewares.${COMPOSE_PROJECT_NAME}-redirect-to-https.redirectscheme.scheme=https"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-api.rule=Host(`${OS2DISPLAY_SERVER_DOMAIN}`)"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-api.entrypoints=websecure"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-api.middlewares=${COMPOSE_PROJECT_NAME}-redirect-to-admin"
+      - "traefik.http.middlewares.${COMPOSE_PROJECT_NAME}-redirect-to-admin.redirectregex.regex=^https:\\/\\/([^\\/]+)\\/?$$"
+      - "traefik.http.middlewares.${COMPOSE_PROJECT_NAME}-redirect-to-admin.redirectregex.replacement=https://$$1${OS2DISPLAY_ADMIN_CLIENT_PATH}"
     volumes:
       - ./media:/app/public/media:rw
 
