@@ -49,11 +49,22 @@ require_mariadb_client
 CLIENT=$(mariadb_client_bin)
 CONNECT_HOST=$(db_connect_host "$DB_HOST")
 
-echo "Restoring '${FILE}' into '${DB_NAME}' at ${CONNECT_HOST}:${DB_PORT}..."
+# Connect as the admin user when an admin password is provided (the app user
+# may be granted only for the docker network, not the host); else use the URL's
+# own credentials.
+if [ -n "${DB_ADMIN_PASSWORD:-}" ]; then
+  CONN_USER="${DB_ADMIN_USER:-root}"
+  CONN_PW="$DB_ADMIN_PASSWORD"
+else
+  CONN_USER="$DB_USER"
+  CONN_PW="$DB_PASS"
+fi
+
+echo "Restoring '${FILE}' into '${DB_NAME}' at ${CONNECT_HOST}:${DB_PORT} as '${CONN_USER}'..."
 
 # Ensure the target database exists (no-op if it already does). Connect
 # without selecting a database so this works on a brand-new clone DB.
-MYSQL_PWD="$DB_PASS" "$CLIENT" --host="$CONNECT_HOST" --port="$DB_PORT" --user="$DB_USER" \
+MYSQL_PWD="$CONN_PW" "$CLIENT" --host="$CONNECT_HOST" --port="$DB_PORT" --user="$CONN_USER" \
   -e "CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\`;"
 
 # Stream the dump into the client. gzip -dc transparently handles .gz;
@@ -64,7 +75,7 @@ case "$FILE" in
   *) reader=(cat) ;;
 esac
 
-"${reader[@]}" "$FILE" | MYSQL_PWD="$DB_PASS" "$CLIENT" \
-  --host="$CONNECT_HOST" --port="$DB_PORT" --user="$DB_USER" "$DB_NAME"
+"${reader[@]}" "$FILE" | MYSQL_PWD="$CONN_PW" "$CLIENT" \
+  --host="$CONNECT_HOST" --port="$DB_PORT" --user="$CONN_USER" "$DB_NAME"
 
 echo "Restore complete."

@@ -154,6 +154,16 @@ sed_inplace() {
   rm -f "$2.bak"
 }
 
+# Host-side dump + restore connect as the DB admin: the v1 application user is
+# typically granted only for the docker network (so containers can connect),
+# not from the host, so it can't authenticate a host-side client. Prompt once
+# (reused for the source dump and the clone restore — same server) and pass it
+# down to the sub-scripts. DB_ADMIN_PASSWORD in the environment skips the prompt.
+db_url_parse "$SRC_DB_URL"
+DB_ADMIN_USER="${DB_ADMIN_USER:-root}"
+DB_ADMIN_PASSWORD=$(prompt_admin_password "$DB_ADMIN_USER" "$(db_connect_host "$DB_HOST")") || exit 1
+export DB_ADMIN_USER DB_ADMIN_PASSWORD
+
 # -- 1. Dump the source DB ---------------------------------------------------
 
 echo "==> [1/4] Dumping source database"

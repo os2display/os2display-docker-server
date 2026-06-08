@@ -49,7 +49,7 @@ Run everything from this checkout's root:
 task -t clone/Taskfile.yml init        # creates clone/.env.clone from the example
 $EDITOR clone/.env.clone               # set SOURCE / DOMAIN
 task -t clone/Taskfile.yml create-db   # provision the clone DB (prompts for root pw)
-task -t clone/Taskfile.yml clone       # 1:1 clone; repeatable — refreshes in place
+task -t clone/Taskfile.yml clone       # 1:1 clone; prompts for the DB admin password
 ```
 
 `cd clone && task <name>` works too (Task auto-discovers the Taskfile). Available tasks: `init`, `create-db`,
@@ -125,8 +125,12 @@ resolution); it's sourced, not executed.
 ## Notes and limitations
 
 - **The host's `mariadb` client is used directly** — no transient container. A `host.docker.internal` URL (a DB
-  on the docker host) is reached from the host itself at `127.0.0.1`; real hostnames are used as-is. The admin
-  connection in `create-db` is therefore evaluated for the **host** (e.g. `root@127.0.0.1`/`root@'%'`), not a
+  on the docker host) is reached from the host itself at `127.0.0.1`; real hostnames are used as-is.
+- **Host-side ops connect as the DB admin, not the app user.** The v1 application user is typically granted only
+  for the docker network (so the containers can connect), not from the host — so dumping the source and
+  restoring the clone from the host must use an account that can, i.e. `root`. Both `create-db` and `clone`
+  prompt for the admin password (default user `root`, override with `DB_ADMIN_USER=`, skip the prompt with
+  `DB_ADMIN_PASSWORD=`). The connection is evaluated for the **host** (`root@127.0.0.1` / `root@'%'`), not a
   container gateway IP — which is what made root access work here.
 - **The eventual v3 stack** (after conversion) runs in containers, so it still needs `host.docker.internal` mapped
   at runtime — add `extra_hosts: ["host.docker.internal:host-gateway"]` to the `os2display` service (e.g. via a

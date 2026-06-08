@@ -114,23 +114,7 @@ case "$SRC_URL" in *\?*) SRC_QUERY="?${SRC_URL#*\?}" ;; esac
 SRC_BASE="${SRC_PREFIX%/*}"            # mysql://user:pass@host:port
 CLONE_DATABASE_URL="${SRC_BASE}/${CLONE_DB_NAME}${SRC_QUERY}"
 
-# Prompt for the admin password (unless provided via env). Read from the
-# terminal so it works even when the task runner doesn't wire up stdin.
-if [ -n "${DB_ADMIN_PASSWORD:-}" ]; then
-  ADMIN_PW="$DB_ADMIN_PASSWORD"
-elif [ -r /dev/tty ]; then
-  printf "Password for DB admin user '%s'@%s: " "$ADMIN_USER" "$CONNECT_HOST" >&2
-  read -rs ADMIN_PW </dev/tty
-  printf '\n' >&2
-else
-  echo "Error: no terminal available for the password prompt." >&2
-  echo "       Set DB_ADMIN_PASSWORD=… to run non-interactively." >&2
-  exit 1
-fi
-[ -n "$ADMIN_PW" ] || {
-  echo "Error: empty admin password." >&2
-  exit 1
-}
+ADMIN_PW=$(prompt_admin_password "$ADMIN_USER" "$CONNECT_HOST") || exit 1
 
 echo "Creating database '${CLONE_DB_NAME}' on ${CONNECT_HOST}:${DB_PORT}..."
 

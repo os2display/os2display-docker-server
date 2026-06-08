@@ -139,3 +139,34 @@ mariadb_dump_bin() {
 db_connect_host() {
   if [ "$1" = "host.docker.internal" ]; then printf '127.0.0.1'; else printf '%s' "$1"; fi
 }
+
+# prompt_admin_password ADMIN_USER HOST
+#   Echo a DB admin password to stdout: from $DB_ADMIN_PASSWORD if set, else
+#   read silently from the terminal (the prompt + echo go to /dev/tty, so only
+#   the password lands on stdout for `pw=$(prompt_admin_password …)`). Returns
+#   non-zero if there's no terminal and no env var, or the entry is empty.
+#
+# Why a host-side clone connects as admin: the v1 application DB user is
+# typically granted only for the docker network (so the containers can
+# connect), not from the host — so dumping/restoring from the host must use an
+# account that can, i.e. root.
+prompt_admin_password() {
+  local user="$1" host="$2" pw
+  if [ -n "${DB_ADMIN_PASSWORD:-}" ]; then
+    printf '%s' "$DB_ADMIN_PASSWORD"
+    return 0
+  fi
+  if [ -r /dev/tty ]; then
+    printf "Password for DB admin user '%s'@%s: " "$user" "$host" >/dev/tty
+    read -rs pw </dev/tty
+    printf '\n' >/dev/tty
+    [ -n "$pw" ] || {
+      echo "Error: empty admin password." >&2
+      return 1
+    }
+    printf '%s' "$pw"
+    return 0
+  fi
+  echo "Error: no terminal for the password prompt; set DB_ADMIN_PASSWORD." >&2
+  return 1
+}

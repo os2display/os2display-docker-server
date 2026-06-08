@@ -37,18 +37,29 @@ require_mariadb_client
 DUMP_BIN=$(mariadb_dump_bin)
 CONNECT_HOST=$(db_connect_host "$DB_HOST")
 
+# Connect as the admin user when an admin password is provided — the app user
+# from the URL is often granted only for the docker network, not the host. Fall
+# back to the URL's own credentials otherwise.
+if [ -n "${DB_ADMIN_PASSWORD:-}" ]; then
+  CONN_USER="${DB_ADMIN_USER:-root}"
+  CONN_PW="$DB_ADMIN_PASSWORD"
+else
+  CONN_USER="$DB_USER"
+  CONN_PW="$DB_PASS"
+fi
+
 mkdir -p backup
 OUT="${1:-}"
 [ -n "$OUT" ] || OUT="backup/$(date -u +%Y%m%dT%H%M%SZ).sql.gz"
 
-echo "Dumping '${DB_NAME}' from ${CONNECT_HOST}:${DB_PORT} to ${OUT}..."
+echo "Dumping '${DB_NAME}' from ${CONNECT_HOST}:${DB_PORT} as '${CONN_USER}' to ${OUT}..."
 
 # --no-tablespaces: avoids requiring the PROCESS privilege, which managed /
 # least-privilege DB users often lack. --single-transaction keeps the dump
 # consistent without locking (InnoDB), so there's no downtime. MYSQL_PWD passes
 # the password without exposing it on the client argv.
-MYSQL_PWD="$DB_PASS" "$DUMP_BIN" \
-  --host="$CONNECT_HOST" --port="$DB_PORT" --user="$DB_USER" \
+MYSQL_PWD="$CONN_PW" "$DUMP_BIN" \
+  --host="$CONNECT_HOST" --port="$DB_PORT" --user="$CONN_USER" \
   --single-transaction --quick --routines --triggers --events \
   --no-tablespaces \
   "$DB_NAME" \
