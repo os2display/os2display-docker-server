@@ -28,8 +28,9 @@ This lives outside the main task surface on purpose: it's a standalone add-on, n
    redirect URIs, …). `APP_SECRET`, `APP_JWT_PASSPHRASE` and the keypair are kept verbatim — it's a faithful copy.
 4. **Restores** the dump into the clone database.
 
-It does **not** bring a stack up: the copied config is v1 and this checkout is v3. Convert it next (the script
-prints the steps), then bring it up with the normal v3 tasks.
+It does **not** bring a stack up. You then **boot the clone in v1 mode** to verify it (`clone/compose.v1.yml`
+runs the same legacy images against the cloned DB under the new URL — see [Run the clone in v1 mode](#run-the-clone-in-v1-mode)),
+and once verified, convert it in place to v3 (the script prints the steps) and bring it up with the normal v3 tasks.
 
 ## Prerequisites
 
@@ -50,20 +51,59 @@ task -t clone/Taskfile.yml init        # creates clone/.env.clone from the examp
 $EDITOR clone/.env.clone               # set SOURCE / DOMAIN
 task -t clone/Taskfile.yml create-db   # provision the clone DB (prompts for root pw)
 task -t clone/Taskfile.yml clone       # 1:1 clone; prompts for the DB admin password
+task -t clone/Taskfile.yml v1:up       # boot in v1 mode and verify (see below)
 ```
 
 `cd clone && task <name>` works too (Task auto-discovers the Taskfile). Available tasks: `init`, `create-db`,
-`clone`, `dump`, `restore`.
+`clone`, `dump`, `restore`, `v1:up`, `v1:pull`, `v1:down`, `v1:logs`, `v1:ps`.
 
-After `clone`, convert the v1 copy to v3:
+After verifying the clone in v1 mode (next section), convert the **same** clone in place to v3:
 
 ```bash
+task -t clone/Taskfile.yml v1:down                 # stop the v1 stack first
 task env:migrate                                   # .env.docker.local -> .env.symfony.migrated
 # review, then: mv .env.symfony.migrated .env.symfony
 task env:init                                      # fill in any missing per-service env files
-task up                                            # bring the v3 stack up
+task up                                            # bring the v3 stack up (same domain)
+task console -- doctrine:migrations:status         # inspect: a cloned DB carries 2.x history
+task console -- doctrine:migrations:rollup --no-interaction   # consolidate that history
 task console -- --user deploy app:update           # migrate the DB schema to v3
 ```
+
+The cloned DB carries the full 2.x migration history that 3.0 consolidated into a single migration, so roll the
+version table up before `app:update` (running `migrate` directly fails on the orphaned version rows). A fresh DB
+with no 2.x history would use `migrate` via `app:update` instead — check the `status` output. See
+[UPGRADE.md](../UPGRADE.md) for the full 1.x → 3.x recipe.
+
+## Run the clone in v1 mode
+
+The cloned config is a v1 install, so it must boot on the **v1 images** — not this checkout's v3 stack.
+`clone/compose.v1.yml` is a faithful resurrection of the 1.x `docker-compose.server.yml` (the `api`, `nginx-api`,
+`admin`, `client` and `redis` services on the `itkdev/os2display-*` images), with two deltas so it can run
+**beside** the production v1 on the same host:
+
+- Traefik router/middleware names are project-namespaced with `${COMPOSE_PROJECT_NAME}-` (the 1.x names were
+  static and would collide on the shared production Traefik).
+- `api` maps `host.docker.internal` → `host-gateway`, so a clone DB reached at `host.docker.internal` (the
+  `create-db` schema on the source's DB server) is reachable from inside the container.
+
+It ships **no** `mariadb` (the clone reuses the `create-db` schema) and **no** `traefik` (the production Traefik
+routes the clone via the external `frontend` network). Image tags interpolate from the cloned `.env.docker.local`,
+so the clone runs the **same** images as the source.
+
+```bash
+task -t clone/Taskfile.yml v1:up       # pull + start; prints the verify URL
+task -t clone/Taskfile.yml v1:ps       # api/nginx-api/admin/client/redis should be up
+task -t clone/Taskfile.yml v1:logs     # SERVICE=api to scope
+```
+
+Then open `https://<DOMAIN>/admin`, log in with the source's users (it's a faithful copy), create a screen,
+authorize it and confirm it plays. Production v1 on its own domain is unaffected. When done verifying, stop it
+with `task -t clone/Taskfile.yml v1:down` and convert to v3 (above).
+
+Requirements: the `itkdev/os2display-*` tags named in the cloned `.env.docker.local` must still be pullable from
+Docker Hub; the external `frontend` network (the one the production Traefik watches) must exist — override its
+name with `FRONTEND_NETWORK=…` if it isn't `frontend`; and a DNS record for the new domain must point at this host.
 
 ### Provisioning the clone database (same server as the source)
 
@@ -132,7 +172,9 @@ resolution); it's sourced, not executed.
   prompt for the admin password (default user `root`, override with `DB_ADMIN_USER=`, skip the prompt with
   `DB_ADMIN_PASSWORD=`). The connection is evaluated for the **host** (`root@127.0.0.1` / `root@'%'`), not a
   container gateway IP — which is what made root access work here.
-- **The eventual v3 stack** (after conversion) runs in containers, so it still needs `host.docker.internal` mapped
-  at runtime — add `extra_hosts: ["host.docker.internal:host-gateway"]` to the `os2display` service (e.g. via a
-  compose override) when you bring the converted clone up.
+- **Reaching the clone DB from inside the containers.** When `CLONE_DATABASE_URL` points at `host.docker.internal`
+  (a DB on the docker host), both stacks map it to the host gateway out of the box — `clone/compose.v1.yml` on the
+  v1 `api` service, and the v3 `docker-compose.yml` on `os2display` — so no override is needed. This assumes the
+  DB server is reachable from the host (an external server, or a bundled mariadb publishing a port); a source DB
+  living in an unpublished container is not reachable this way.
 - Run multiple clones by giving each its own checkout (and thus `CLONE_PROJECT`).

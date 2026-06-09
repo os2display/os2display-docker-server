@@ -20,9 +20,10 @@
 #      -> the new one (APP_API_ENDPOINT, CORS, OIDC redirect URIs, ...).
 #   4. Restore the dump into the clone database.
 #
-# It does NOT bring a stack up: the copied config is v1 and this checkout is
-# v3. Convert it next (see the closing notes the script prints), then bring it
-# up with the normal v3 tasks.
+# It does NOT bring a stack up. Boot the clone in v1 mode to verify it first
+# (`task -t clone/Taskfile.yml v1:up` — clone/compose.v1.yml runs the same
+# legacy images), then convert it to v3 (see the closing notes the script
+# prints) and bring it up with the normal v3 tasks.
 #
 # Required (env vars, or clone/.env.clone — copy clone/.env.clone.example):
 #   SOURCE=/path/to/v1-install   the v1 stack root to clone (holds
@@ -225,8 +226,17 @@ echo "  project           : $CLONE_PROJECT"
 echo "  domain            : $DOMAIN"
 echo "  database          : ${CLONE_DATABASE_URL%%\?*} (data restored)"
 echo "===================================================="
-echo "This is still a v1 install. Convert it to v3 next:"
+echo "This is a faithful v1 install. Boot it in v1 mode and VERIFY it first:"
 echo
+echo "  A. Bring up: task -t clone/Taskfile.yml v1:up"
+echo "               #   Same legacy itkdev images, cloned DB, new URL, routed by"
+echo "               #   the production Traefik (external 'frontend' network)."
+echo "  B. Verify:   open https://${DOMAIN}/admin  -> log in (same users as the source),"
+echo "               #   create a screen, authorize it, confirm it plays."
+echo
+echo "Then convert this SAME clone in place to v3:"
+echo
+echo "  0. Stop v1:  task -t clone/Taskfile.yml v1:down"
 echo "  1. Env:      task env:migrate   # .env.docker.local -> .env.symfony.migrated"
 echo "               #   review + apply the manual key renames (see UPGRADE.md), then:"
 echo "               mv .env.symfony.migrated .env.symfony"

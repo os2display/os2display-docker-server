@@ -1,0 +1,171 @@
+# Runnable v1 (1.x itk-dev) stack for the clone — lets a freshly cloned v1
+# install BOOT in v1 mode (same legacy images, cloned DB, new URL) so you can
+# verify it (log in, set up + authorize a screen) BEFORE converting it to v3.
+#
+# Faithful resurrection of v1.1.2's docker-compose.server.yml, with three
+# deltas so the clone can run BESIDE the production v1 on the same host:
+#   * Traefik router/middleware names are project-namespaced with
+#     ${COMPOSE_PROJECT_NAME}- (v1.1.2's names were static and would collide
+#     on the shared production Traefik).
+#   * `api` maps host.docker.internal -> host-gateway, so a clone DB reached at
+#     host.docker.internal (the create-db schema on the source's DB server) is
+#     reachable from inside the container.
+#   * No `mariadb` service — the clone reuses the create-db schema on the
+#     source's DB server (CLONE_DATABASE_URL). No `traefik` service — the clone
+#     is routed by the production Traefik via the external `frontend` network.
+#
+# Image tags (COMPOSE_VERSION_*) and APP_* are interpolated from the CLONED
+# .env.docker.local, so the clone runs the SAME images as the source. Bring it
+# up via the clone Taskfile, which wires the file/project-dir/env-file:
+#   task -t clone/Taskfile.yml v1:up
+#
+# Requires the itkdev/os2display-* tags named in the source env to still be
+# pullable from Docker Hub, and the external `frontend` network (the one the
+# production Traefik watches) to exist (override its name with FRONTEND_NETWORK).
+
+networks:
+  frontend:
+    external: true
+    name: ${FRONTEND_NETWORK:-frontend}
+  app:
+    driver: bridge
+    internal: false
+
+services:
+  api:
+    image: itkdev/os2display-api-service:${COMPOSE_VERSION_API}
+    restart: unless-stopped
+    networks:
+      - app
+    # Reach a clone DB published on the docker host (e.g. a host.docker.internal
+    # CLONE_DATABASE_URL — the create-db schema on the source's DB server).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      # PHP config values
+      - PHP_MAX_EXECUTION_TIME=${PHP_MAX_EXECUTION_TIME}
+      - PHP_MEMORY_LIMIT=${PHP_MEMORY_LIMIT}
+      - PHP_POST_MAX_SIZE=${PHP_POST_MAX_SIZE}
+      - PHP_UPLOAD_MAX_FILESIZE=${PHP_UPLOAD_MAX_FILESIZE}
+      - PHP_TIMEZONE=UTC
+      - PHP_PM_MAX_CHILDREN=16
+      - PHP_OPCACHE_VALIDATE_TIMESTAMPS=0
+      # APP (Symfony)
+      - APP_SECRET=${APP_SECRET:?err}
+      - APP_DATABASE_URL=${APP_DATABASE_URL:?err}
+      - APP_JWT_PASSPHRASE=${APP_JWT_PASSPHRASE:?err}
+      - APP_JWT_TOKEN_TTL=${APP_JWT_TOKEN_TTL}
+      - APP_JWT_SCREEN_TOKEN_TTL=${APP_JWT_SCREEN_TOKEN_TTL}
+      - APP_JWT_REFRESH_TOKEN_TTL=${APP_JWT_REFRESH_TOKEN_TTL}
+      - APP_JWT_SCREEN_REFRESH_TOKEN_TTL=${APP_JWT_SCREEN_REFRESH_TOKEN_TTL}
+      - APP_ENV=${APP_ENV}
+      - APP_TRUSTED_PROXIES=${APP_TRUSTED_PROXIES}
+      - APP_CORS_ALLOW_ORIGIN=${APP_CORS_ALLOW_ORIGIN}
+      - APP_DEFAULT_DATE_FORMAT=${APP_DEFAULT_DATE_FORMAT}
+      - APP_INTERNAL_OIDC_METADATA_URL=${INTERNAL_OIDC_METADATA_URL}
+      - APP_INTERNAL_OIDC_CLIENT_ID=${INTERNAL_OIDC_CLIENT_ID}
+      - APP_INTERNAL_OIDC_CLIENT_SECRET=${INTERNAL_OIDC_CLIENT_SECRET}
+      - APP_INTERNAL_OIDC_REDIRECT_URI=${INTERNAL_OIDC_REDIRECT_URI}
+      - APP_INTERNAL_OIDC_LEEWAY=${INTERNAL_OIDC_LEEWAY}
+      - APP_EXTERNAL_OIDC_METADATA_URL=${EXTERNAL_OIDC_METADATA_URL}
+      - APP_EXTERNAL_OIDC_CLIENT_ID=${EXTERNAL_OIDC_CLIENT_ID}
+      - APP_EXTERNAL_OIDC_CLIENT_SECRET=${EXTERNAL_OIDC_CLIENT_SECRET}
+      - APP_EXTERNAL_OIDC_REDIRECT_URI=${EXTERNAL_OIDC_REDIRECT_URI}
+      - APP_EXTERNAL_OIDC_LEEWAY=${EXTERNAL_OIDC_LEEWAY}
+      - APP_EXTERNAL_OIDC_HASH_SALT=${EXTERNAL_OIDC_HASH_SALT}
+      - APP_EXTERNAL_OIDC_CLAIM_ID=${EXTERNAL_OIDC_CLAIM_ID}
+      - APP_REDIS_CACHE_PREFIX=${APP_REDIS_CACHE_PREFIX}
+      - APP_REDIS_CACHE_DSN=${APP_REDIS_CACHE_DSN}
+      - APP_CALENDAR_API_FEED_SOURCE_LOCATION_ENDPOINT=${APP_CALENDAR_API_FEED_SOURCE_LOCATION_ENDPOINT}
+      - APP_CALENDAR_API_FEED_SOURCE_RESOURCE_ENDPOINT=${APP_CALENDAR_API_FEED_SOURCE_RESOURCE_ENDPOINT}
+      - APP_CALENDAR_API_FEED_SOURCE_EVENT_ENDPOINT=${APP_CALENDAR_API_FEED_SOURCE_EVENT_ENDPOINT}
+      - APP_CALENDAR_API_FEED_SOURCE_CUSTOM_MAPPINGS=${APP_CALENDAR_API_FEED_SOURCE_CUSTOM_MAPPINGS}
+      - APP_CALENDAR_API_FEED_SOURCE_EVENT_MODIFIERS=${APP_CALENDAR_API_FEED_SOURCE_EVENT_MODIFIERS}
+      - APP_CALENDAR_API_FEED_SOURCE_DATE_FORMAT=${APP_CALENDAR_API_FEED_SOURCE_DATE_FORMAT}
+      - APP_CALENDAR_API_FEED_SOURCE_DATE_TIMEZONE=${APP_CALENDAR_API_FEED_SOURCE_DATE_TIMEZONE}
+      - APP_CALENDAR_API_FEED_SOURCE_CACHE_EXPIRE_SECONDS=${APP_CALENDAR_API_FEED_SOURCE_CACHE_EXPIRE_SECONDS}
+      - APP_TRACK_SCREEN_INFO=${APP_TRACK_SCREEN_INFO}
+      - APP_TRACK_SCREEN_INFO_UPDATE_INTERVAL_SECONDS=${APP_TRACK_SCREEN_INFO_UPDATE_INTERVAL_SECONDS}
+      - APP_KEY_VAULT_JSON=${APP_KEY_VAULT_JSON}
+    volumes:
+      - ./jwt:/var/www/html/config/jwt:rw
+      - ./media:/var/www/html/public/media:rw
+
+  nginx-api:
+    image: itkdev/os2display-api-service-nginx:${COMPOSE_VERSION_API}
+    restart: unless-stopped
+    networks:
+      - app
+      - frontend
+    environment:
+      - PHP_FPM_SERVER=api
+      - NGINX_FPM_UPLOAD_MAX=${NGINX_FPM_UPLOAD_MAX}
+    depends_on:
+      - api
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${FRONTEND_NETWORK:-frontend}"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-api-http.rule=Host(`${COMPOSE_SERVER_DOMAIN}`)"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-api-http.entrypoints=web"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-api-http.middlewares=${COMPOSE_PROJECT_NAME}-redirect-to-https"
+      - "traefik.http.middlewares.${COMPOSE_PROJECT_NAME}-redirect-to-https.redirectscheme.scheme=https"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-api.rule=Host(`${COMPOSE_SERVER_DOMAIN}`)"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-api.entrypoints=websecure"
+      # Redirect root / request to /${COMPOSE_ADMIN_CLIENT_PATH}
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-api.middlewares=${COMPOSE_PROJECT_NAME}-redirect-to-admin"
+      - "traefik.http.middlewares.${COMPOSE_PROJECT_NAME}-redirect-to-admin.redirectregex.regex=^https:\\/\\/([^\\/]+)\\/?$$"
+      - "traefik.http.middlewares.${COMPOSE_PROJECT_NAME}-redirect-to-admin.redirectregex.replacement=https://$$1${COMPOSE_ADMIN_CLIENT_PATH}"
+    volumes:
+      - ./media:/var/www/html/public/media:rw
+
+  admin:
+    image: itkdev/os2display-admin-client:${COMPOSE_VERSION_ADMIN}
+    restart: unless-stopped
+    networks:
+      - app
+      - frontend
+    environment:
+      - APP_ADMIN_CLIENT_PATH=${COMPOSE_ADMIN_CLIENT_PATH}
+      - API_PATH=${API_PATH}
+      - APP_TOUCH_BUTTON_REGIONS=${APP_TOUCH_BUTTON_REGIONS}
+      - APP_REJSEPLANEN_API_KEY=${APP_REJSEPLANEN_API_KEY}
+      - APP_SHOW_SCREEN_STATUS=${APP_SHOW_SCREEN_STATUS}
+      - APP_PREVIEW_CLIENT=${APP_PREVIEW_CLIENT}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${FRONTEND_NETWORK:-frontend}"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-admin-http.rule=Host(`${COMPOSE_SERVER_DOMAIN}`) && PathPrefix(`${COMPOSE_ADMIN_CLIENT_PATH}`)"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-admin-http.entrypoints=web"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-admin-http.middlewares=${COMPOSE_PROJECT_NAME}-redirect-to-https"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-admin.rule=Host(`${COMPOSE_SERVER_DOMAIN}`) && PathPrefix(`${COMPOSE_ADMIN_CLIENT_PATH}`)"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-admin.entrypoints=websecure"
+
+  client:
+    image: itkdev/os2display-client:${COMPOSE_VERSION_CLIENT}
+    restart: unless-stopped
+    networks:
+      - app
+      - frontend
+    environment:
+      - APP_SCREEN_CLIENT_PATH=${COMPOSE_SCREEN_CLIENT_PATH:?err}
+      - APP_API_ENDPOINT=${APP_API_ENDPOINT:?err}
+      - APP_API_PATH=${APP_API_PATH:?err}
+      - APP_API_AUTHENTICATION_ENDPOINT=${APP_API_AUTHENTICATION_ENDPOINT}
+      - APP_API_AUTHENTICATION_REFRESH_ENDPOINT=${APP_API_AUTHENTICATION_REFRESH_ENDPOINT}
+      - APP_DATA_PULL_INTERVAL=${APP_DATA_PULL_INTERVAL}
+      - APP_SCHEDULING_INTERVAL=${APP_SCHEDULING_INTERVAL}
+      - APP_DEBUG=${APP_DEBUG}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${FRONTEND_NETWORK:-frontend}"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-client-http.rule=Host(`${COMPOSE_SERVER_DOMAIN}`) && PathPrefix(`${COMPOSE_SCREEN_CLIENT_PATH}`)"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-client-http.entrypoints=web"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-client-http.middlewares=${COMPOSE_PROJECT_NAME}-redirect-to-https"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-client.rule=Host(`${COMPOSE_SERVER_DOMAIN}`) && PathPrefix(`${COMPOSE_SCREEN_CLIENT_PATH}`)"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-client.entrypoints=websecure"
+
+  redis:
+    image: "redis:6"
+    restart: unless-stopped
+    networks:
+      - app

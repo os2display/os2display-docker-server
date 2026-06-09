@@ -21,6 +21,13 @@ vars:
   # Absolute path to this Taskfile's directory — used so the scripts resolve
   # regardless of the working directory the task is invoked from.
   DIR: "{{.TASKFILE_DIR}}"
+  # docker compose invocation for the runnable v1 stack: the v1 compose file
+  # lives in clone/, but --project-directory pins the project root (the stack
+  # root holding this clone/ dir) so ./jwt and ./media resolve there, and
+  # --env-file feeds compose the cloned v1 interpolation vars (COMPOSE_VERSION_*,
+  # COMPOSE_SERVER_DOMAIN, COMPOSE_PROJECT_NAME, APP_*). COMPOSE_PROJECT_NAME in
+  # that file sets the docker project name (router namespacing + network prefix).
+  DC_V1: 'docker compose -f "{{.TASKFILE_DIR}}/compose.v1.yml" --project-directory "{{.TASKFILE_DIR}}/.." --env-file "{{.TASKFILE_DIR}}/../.env.docker.local"'
 
 tasks:
   default:
@@ -74,3 +81,45 @@ tasks:
       vars: [FILE]
     cmds:
       - "{{.DIR}}/db-restore.sh {{.FILE}}"
+
+  v1:up:
+    desc: |
+      Boot the cloned v1 install in v1 MODE (same legacy itkdev images, cloned
+      DB, new URL) via clone/compose.v1.yml — so you can verify it (log in, set
+      up + authorize a screen) BEFORE converting to v3. Routed by the production
+      Traefik on the external `frontend` network (override its name with
+      FRONTEND_NETWORK=…). Run `clone` first. Convert with `v1:down` + env:migrate.
+    preconditions:
+      - sh: "[ -f '{{.DIR}}/../.env.docker.local' ]"
+        msg: "No .env.docker.local in the stack root — run `clone` first."
+    cmds:
+      - "{{.DC_V1}} pull"
+      - "{{.DC_V1}} up -d"
+      - |
+        env_file="{{.DIR}}/../.env.docker.local"
+        domain=$(grep -E '^COMPOSE_SERVER_DOMAIN=' "$env_file" | cut -d= -f2- | tr -d '"')
+        admin=$(grep -E '^COMPOSE_ADMIN_CLIENT_PATH=' "$env_file" | cut -d= -f2- | tr -d '"')
+        echo "v1 clone up. Verify at https://${domain}${admin:-/admin}"
+
+  v1:pull:
+    desc: "Pull the v1 stack images named in the cloned .env.docker.local."
+    cmds:
+      - "{{.DC_V1}} pull"
+
+  v1:down:
+    desc: |
+      Stop + remove the v1 clone stack (run this before converting to v3). The
+      stack holds no named volumes, so the cloned DB (on the source's DB server),
+      media and jwt are untouched.
+    cmds:
+      - "{{.DC_V1}} down"
+
+  v1:logs:
+    desc: "Tail the v1 clone stack logs (SERVICE=… to scope, e.g. SERVICE=api)."
+    cmds:
+      - "{{.DC_V1}} logs -f --tail=100 {{.SERVICE}}"
+
+  v1:ps:
+    desc: "Show the v1 clone stack's containers."
+    cmds:
+      - "{{.DC_V1}} ps"
