@@ -1259,6 +1259,7 @@ Operations
   logs:disk            Docker log disk usage per container + retention policy (Linux only)
   console              Run any bin/console command in os2display  (e.g. `task console -- list`)
   console:run          Run a one-off bin/console in a throwaway container (migrate before `up`)
+  jwt:ensure           Ensure the JWT keypair exists/matches JWT_PASSPHRASE; regenerate on mismatch
   cache:clear          Clear the application cache               (alias: cc)
   php:opcache          Report on the FPM pool's OPcache health (RAW=1 for JSON)
   tenant:add           Add a tenant group (interactive)          (alias: tenant_add)

@@ -45,9 +45,8 @@ tasks:
       - "{{.COMPOSE}} up --force-recreate --detach --remove-orphans --wait"
       - echo "Clearing the cache"
       - task: cache:clear
-      - echo "Create jwt key pair"
-      - task: console
-        vars: { CLI_ARGS: "lexik:jwt:generate-keypair --skip-if-exists" }
+      - echo "Ensure the JWT keypair exists and matches JWT_PASSPHRASE"
+      - task: jwt:ensure
       - task: tenant:add
       - echo "CREATE AN ADMIN USER. CHOOSE THE TENANT YOU JUST CREATED."
       - task: user:add
@@ -173,6 +172,22 @@ tasks:
       EXEC_FLAGS: ""
     cmds:
       - "{{.COMPOSE}} run --rm {{if .EXEC_FLAGS}}{{.EXEC_FLAGS}} {{end}}os2display bin/console {{.CLI_ARGS}}"
+
+  jwt:ensure:
+    desc: |
+      Ensure a JWT keypair exists and matches JWT_PASSPHRASE — (re)generate ONLY
+      if it's missing, unreadable, or doesn't validate. Safe to run on every
+      install/upgrade: a valid keypair is left untouched, so existing tokens
+      survive; an absent or mismatched one is regenerated (which invalidates
+      issued tokens — screens must re-authenticate). Requires the stack up.
+    cmds:
+      - |
+        if {{.COMPOSE}} exec -T os2display bin/console lexik:jwt:check-config >/dev/null 2>&1; then
+          echo "JWT keypair OK — leaving it untouched."
+        else
+          echo "JWT keypair missing or invalid for the current JWT_PASSPHRASE — regenerating."
+          {{.COMPOSE}} exec -T --user deploy os2display bin/console lexik:jwt:generate-keypair --overwrite
+        fi
 
   cache:clear:
     desc: Clear the application cache

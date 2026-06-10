@@ -231,9 +231,10 @@ admin commands sometimes do.
 task install                  # pulls the rest of the images, runs `bin/console app:update`
                               # (Doctrine migrations + cache:warmup) in a one-off container
                               # BEFORE bringing the web tier up, then brings up the full
-                              # stack, generates the JWT keypair if missing, and interactively
-                              # prompts for tenant + admin user (skip these if you already
-                              # have them — your old data is still there).
+                              # stack, ensures the JWT keypair matches JWT_PASSPHRASE
+                              # (regenerating only on mismatch), and interactively prompts
+                              # for tenant + admin user (skip these if you already have
+                              # them — your old data is still there).
 ```
 
 `task install` reuses the existing data: the bundled mariadb's named volume from 1.x carries
