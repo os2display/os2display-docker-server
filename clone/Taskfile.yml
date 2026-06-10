@@ -82,6 +82,36 @@ tasks:
     cmds:
       - "{{.DIR}}/db-restore.sh {{.FILE}}"
 
+  reclone:
+    desc: |
+      Re-run a clone over a checkout that was already cloned/converted — without
+      the "this directory already carries env" abort. Brings down any running
+      clone containers (v1 + v3), deletes the env files that clone/convert
+      generate (the v1 .env* that `clone` re-copies AND the stale v3 per-service
+      files), then re-runs `clone` (re-dump source, re-copy media/jwt/env,
+      re-restore the clone DB). Leaves clone/.env.clone untouched.
+    cmds:
+      - |
+        root="{{.DIR}}/.."
+        # 1. Stop running clone containers. v1 first — its project name comes from
+        #    .env.docker.local, which we delete in step 2 — then any v3 stack
+        #    (reads .env). Both are no-ops if nothing is up.
+        if [ -f "$root/.env.docker.local" ]; then
+          {{.DC_V1}} down --remove-orphans 2>/dev/null || true
+        fi
+        ( cd "$root" && docker compose down --remove-orphans 2>/dev/null || true )
+        # 2. Delete the env that clone/convert produced — NEVER clone/.env.clone
+        #    (the operator config). clone re-copies .env / .env.local /
+        #    .env.docker.local; the v3 per-service files and *.local overrides are
+        #    stale and would otherwise block the clone or boot the wrong stack.
+        ( cd "$root" && rm -f \
+            .env .env.local .env.docker.local \
+            .env.symfony .env.symfony.migrated \
+            .env.php .env.nginx .env.mariadb .env.traefik \
+            .env.symfony.local .env.php.local .env.nginx.local .env.mariadb.local .env.traefik.local )
+        echo "Downed clone containers and cleared generated env. Re-cloning…"
+      - "{{.DIR}}/clone.sh"
+
   v1:up:
     desc: |
       Boot the cloned v1 install in v1 MODE (same legacy itkdev images, cloned

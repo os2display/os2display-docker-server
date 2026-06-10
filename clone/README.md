@@ -55,7 +55,10 @@ task -t clone/Taskfile.yml v1:up       # boot in v1 mode and verify (see below)
 ```
 
 `cd clone && task <name>` works too (Task auto-discovers the Taskfile). Available tasks: `init`, `create-db`,
-`clone`, `dump`, `restore`, `v1:up`, `v1:pull`, `v1:down`, `v1:logs`, `v1:ps`.
+`clone`, `reclone`, `dump`, `restore`, `v1:up`, `v1:pull`, `v1:down`, `v1:logs`, `v1:ps`.
+
+To start a clone over from scratch (e.g. after a v3 conversion), use [`reclone`](#re-running-a-clone) instead of
+`clone` — it tears the stale state down first.
 
 After verifying the clone in v1 mode (next section), convert the **same** clone in place to v3:
 
@@ -74,6 +77,22 @@ The cloned DB carries the full 2.x migration history that 3.0 consolidated into 
 version table up before `app:update` (running `migrate` directly fails on the orphaned version rows). A fresh DB
 with no 2.x history would use `migrate` via `app:update` instead — check the `status` output. See
 [UPGRADE.md](../UPGRADE.md) for the full 1.x → 3.x recipe.
+
+### Re-running a clone
+
+`clone` refreshes a clone in place, but a checkout that's already been **converted to v3** carries generated env
+files (`.env.symfony`, `.env.php`, …) and possibly a running stack, which make `clone` abort ("this directory
+already carries env for COMPOSE_PROJECT_NAME=…") or boot the wrong stack. `reclone` starts over cleanly:
+
+```bash
+task -t clone/Taskfile.yml reclone
+```
+
+It brings down any running clone containers (v1 + v3), deletes the env files that clone/convert generate — the v1
+`.env` / `.env.local` / `.env.docker.local` that `clone` re-copies and the stale v3 per-service files and
+`*.local` overrides — then re-runs `clone` (re-dump, re-copy media/jwt/env, re-restore the clone DB). It leaves
+`clone/.env.clone` untouched, so `SOURCE` / `DOMAIN` / `CLONE_DATABASE_URL` carry over. The clone DB is overwritten
+in place, not recreated, so you don't need `create-db` again.
 
 ## Run the clone in v1 mode
 
