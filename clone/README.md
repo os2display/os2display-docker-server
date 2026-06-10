@@ -65,20 +65,29 @@ After verifying the clone in v1 mode (next section), convert the **same** clone 
 ```bash
 task -t clone/Taskfile.yml v1:down                 # stop the v1 stack first
 task env:migrate                                   # .env.docker.local -> .env.symfony.migrated
-# review, then: mv .env.symfony.migrated .env.symfony
+$EDITOR .env.symfony.migrated                      # review + apply manual key renames (UPGRADE.md)
+mv .env.symfony.migrated .env.symfony              # REQUIRED before env:init (see note below)
 task env:init                                      # fill in any missing per-service env files
 # Migrate the schema in a one-off container (DB/redis only, no web tier), BEFORE `up`:
 task console:run -- doctrine:migrations:status     # inspect: a cloned DB carries 2.x history
 task console:run -- doctrine:migrations:rollup --no-interaction   # consolidate that history
 task console:run -- app:update                     # migrate the DB schema to v3
 task up                                            # bring the v3 stack up — schema already current
+task jwt:ensure                                    # validate the carried-over JWT keypair
 ```
 
 Migrate via `console:run` (a throwaway `compose run` container that starts only the DB/redis
 dependencies) **before** `task up`, so the v3 stack never serves against an un-migrated schema. The cloned
 DB carries the full 2.x migration history that 3.0 consolidated into a single migration, so roll the version
 table up before `app:update` (running `migrate` directly fails on the orphaned version rows). A fresh DB with no
-2.x history would use `migrate` via `app:update` instead — check the `status` output. See
+2.x history would use `migrate` via `app:update` instead — check the `status` output.
+
+**`mv .env.symfony.migrated .env.symfony` before `task env:init` is required.** `env:init` only fills in
+**missing** files; with `.env.symfony` already in place it leaves it (and the migrated `JWT_PASSPHRASE`) alone.
+Skip the `mv` and `env:init` instead generates a fresh `.env.symfony` with a **new random** `JWT_PASSPHRASE`,
+which no longer matches the carried-over keypair. The v1 keypair itself carries over untouched (`env:init` no
+longer wipes `./jwt`), so screens authorized in v1 keep working; `task jwt:ensure` validates it after boot and
+**only** regenerates if the v3 image can't read the v1 key — in which case screens must re-authorize. See
 [UPGRADE.md](../UPGRADE.md) for the full 1.x → 3.x recipe.
 
 ### Re-running a clone
