@@ -67,15 +67,18 @@ task -t clone/Taskfile.yml v1:down                 # stop the v1 stack first
 task env:migrate                                   # .env.docker.local -> .env.symfony.migrated
 # review, then: mv .env.symfony.migrated .env.symfony
 task env:init                                      # fill in any missing per-service env files
-task up                                            # bring the v3 stack up (same domain)
-task console -- doctrine:migrations:status         # inspect: a cloned DB carries 2.x history
-task console -- doctrine:migrations:rollup --no-interaction   # consolidate that history
-task console -- --user deploy app:update           # migrate the DB schema to v3
+# Migrate the schema in a one-off container (DB/redis only, no web tier), BEFORE `up`:
+task console:run -- doctrine:migrations:status     # inspect: a cloned DB carries 2.x history
+task console:run -- doctrine:migrations:rollup --no-interaction   # consolidate that history
+task console:run -- app:update                     # migrate the DB schema to v3
+task up                                            # bring the v3 stack up — schema already current
 ```
 
-The cloned DB carries the full 2.x migration history that 3.0 consolidated into a single migration, so roll the
-version table up before `app:update` (running `migrate` directly fails on the orphaned version rows). A fresh DB
-with no 2.x history would use `migrate` via `app:update` instead — check the `status` output. See
+Migrate via `console:run` (a throwaway `compose run` container that starts only the DB/redis
+dependencies) **before** `task up`, so the v3 stack never serves against an un-migrated schema. The cloned
+DB carries the full 2.x migration history that 3.0 consolidated into a single migration, so roll the version
+table up before `app:update` (running `migrate` directly fails on the orphaned version rows). A fresh DB with no
+2.x history would use `migrate` via `app:update` instead — check the `status` output. See
 [UPGRADE.md](../UPGRADE.md) for the full 1.x → 3.x recipe.
 
 ### Re-running a clone
