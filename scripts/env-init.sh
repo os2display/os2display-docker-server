@@ -14,13 +14,13 @@
 #     variable rc3+ uses inside DATABASE_URL. Either way, the bundled
 #     value can't drift behind the stack and Doctrine picks the right
 #     SQL dialect.
-#   - ./jwt/{private,public}.pem: wiped if present, because rotating
-#     JWT_PASSPHRASE orphans whatever keypair the previous install
-#     generated. `task install`'s `lexik:jwt:generate-keypair
-#     --skip-if-exists` then regenerates fresh against the new
-#     passphrase. Skipping this wipe lets the runtime fail login with
-#     "Unable to create a signed JWT from the given configuration"
-#     (auth succeeds, signing fails).
+#   - ./jwt/{private,public}.pem: left ALONE. This script never deletes
+#     operator key material — a wipe here is invisible to upgrade paths
+#     that don't run `task install` (e.g. clone -> v3 via `task up`),
+#     stranding them with no keypair. Instead, when a fresh .env.symfony
+#     rotates JWT_PASSPHRASE, we warn that any existing keypair no longer
+#     matches; `task jwt:ensure` (run by `task install`, and available
+#     standalone) validates the keypair and regenerates only on mismatch.
 #
 # This is the single bootstrap entry point. `task install` / `task up` /
 # `task update` precondition on `.env.symfony` existing — running this is
@@ -105,31 +105,24 @@ rm -f .env.symfony.bak
 
 # JWT_PASSPHRASE was just rotated to a fresh random value. Any pre-
 # existing keypair at ./jwt/{private,public}.pem was encrypted with
-# whatever passphrase preceded this run — it's now orphaned and
-# `task install`'s `lexik:jwt:generate-keypair --skip-if-exists`
-# won't notice the mismatch, so login would 500 with "Unable to
-# create a signed JWT from the given configuration." (auth succeeds,
-# JWT signing fails). Wipe the orphans here; `task install`
-# regenerates fresh against the new passphrase.
-#
-# Route the rm through a transient alpine container: the keypair is
-# written by the os2display container's UID 1042 `deploy` user, so
-# on Linux hosts a host-side `rm` fails with "Permission denied"
-# unless the operator runs as UID 1042 or has sudo. Docker Desktop
-# (macOS/Windows) brokers ownership at the VM boundary, so a host
-# `rm` would work there — but the container path is portable.
-JWT_WIPED=""
+# whatever passphrase preceded this run, so it no longer matches. We do
+# NOT delete it here — `task jwt:ensure` (run by `task install`) validates
+# the keypair against the passphrase and regenerates only on mismatch, so
+# the fix works whether or not `task install` is the next step. Just flag
+# the orphan so the operator isn't surprised.
+JWT_ORPHANED=""
 if [ -f jwt/private.pem ] || [ -f jwt/public.pem ]; then
-  docker run --rm -v "$PWD/jwt:/jwt" alpine rm -f /jwt/private.pem /jwt/public.pem
-  JWT_WIPED="yes"
+  JWT_ORPHANED="yes"
 fi
 
 echo
 echo ".env.symfony created from $IMAGE."
 echo "  APP_SECRET / JWT_PASSPHRASE: random 32-byte hex (auto-generated)"
 echo "  DATABASE_URL serverVersion:  ${MARIADB_TAG}-MariaDB (matched to compose pin)"
-if [ -n "$JWT_WIPED" ]; then
-  echo "  ./jwt/*.pem:                 wiped (orphaned by rotated JWT_PASSPHRASE)"
+if [ -n "$JWT_ORPHANED" ]; then
+  echo "  ./jwt/*.pem:                 kept, but no longer match the rotated"
+  echo "                               JWT_PASSPHRASE — 'task jwt:ensure' (run by"
+  echo "                               'task install') regenerates them on mismatch."
 fi
 echo
 echo "Edit .env.symfony for any ADMIN_*, CLIENT_*, OIDC_*, or DATABASE_URL"
