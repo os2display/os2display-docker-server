@@ -279,15 +279,18 @@ See [Quick start](#quick-start-fresh-install).
 ```bash
 task db:backup                     # before every task update
 $EDITOR .env                       # bump OS2DISPLAY_VERSION_API
-task update                        # pull, recreate, run app:update (migrations + cache:warmup)
+task update                        # pull, migrate, recreate (app:update runs before the web tier)
 task env:diff                      # check whether the new image added Symfony env keys
                                    # — if yes, edit .env.symfony to match
 ```
 
-`task update` pulls fresh images, recreates the containers (preserving named volumes), and runs
-`bin/console app:update`. Image swaps and container recreation themselves don't touch data —
-the schema rewrite happens inside `app:update`. See
-[Caveats](#caveats-and-foot-guns) for the full reasoning.
+`task update` pulls fresh images, runs `bin/console app:update` in a one-off container
+(`task console:run`, which starts only the DB/redis dependencies) to migrate the schema, then
+recreates the containers (preserving named volumes) on the new images. Running the migration
+**before** the web tier comes up means the nginx/screen-client tier never serves traffic against
+an un-migrated schema. Image swaps and container recreation themselves don't touch data — the
+schema rewrite happens inside `app:update`. See [Caveats](#caveats-and-foot-guns) for the full
+reasoning.
 
 #### How do I upgrade the bundled MariaDB across a major version?
 
@@ -1234,7 +1237,7 @@ churn for the casual review cycle.
 ```text
 Lifecycle
   install              Install the project — first-time setup (interactive)
-  update               Pull images, recreate containers, run app:update
+  update               Pull images, run app:update (migrate), then recreate containers
   up                   Start the stack; blocks until healthchecks pass
   down                 Remove all containers (preserves named volumes)
   stop                 Stop all containers
@@ -1254,6 +1257,7 @@ Operations
   logs:access          Tail traefik's JSON access log, one compact line per request
   logs:disk            Docker log disk usage per container + retention policy (Linux only)
   console              Run any bin/console command in os2display  (e.g. `task console -- list`)
+  console:run          Run a one-off bin/console in a throwaway container (migrate before `up`)
   cache:clear          Clear the application cache               (alias: cc)
   php:opcache          Report on the FPM pool's OPcache health (RAW=1 for JSON)
   tenant:add           Add a tenant group (interactive)          (alias: tenant_add)
@@ -1302,6 +1306,12 @@ task console -- list                                 # list all bin/console comm
 task console -- debug:router                         # inspect Symfony routes
 task console -- doctrine:migrations:status           # ad-hoc Doctrine ops
 ```
+
+`task console:run -- <args>` is the same proxy but runs in a **throwaway container**
+(`compose run --rm`) that starts only the DB/redis dependencies, not the nginx/traefik
+web tier. Use it to migrate the schema **before** `task up` — so the stack never serves
+against an un-migrated schema — e.g. `task console:run -- doctrine:migrations:migrate
+--no-interaction`. `task install` and `task update` use it for exactly this.
 
 Tasks like `cache:clear`, `tenant:add`, `user:add`, and `templates:install` that
 proxy a single Symfony command are implemented as thin wrappers around
