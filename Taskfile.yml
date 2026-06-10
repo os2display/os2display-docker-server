@@ -55,16 +55,20 @@ tasks:
       - task: show-notes
 
   update:
-    desc: Pull updated images, run app:update (Doctrine migrations + cache:warmup) before recreating the web tier
+    desc: Pull updated images, stop the web tier, migrate, then recreate on the new images
     preconditions:
       - sh: "[ -f .env.symfony ]"
         msg: ".env.symfony missing — run 'task env:init' first."
     cmds:
       - "{{.COMPOSE}} pull"
+      # Stop the web tier (the app + its nginx) BEFORE migrating, so no old-image
+      # request ever hits the new schema. traefik stays up and returns 502/503
+      # for the brief window — a clean "down for maintenance" instead of errors.
+      # mariadb/redis stay up for the migration.
+      - echo "Stop the web tier for the migration window"
+      - "{{.COMPOSE}} stop nginx-api os2display"
       # Migrate the schema on the newly pulled image in a one-off container
-      # (starts only DB/redis) BEFORE recreating the web tier, so the new
-      # containers boot against an already-current schema. Doctrine migrations
-      # should stay backward-compatible for the brief overlap with the old tier.
+      # (starts only DB/redis), so the recreated containers boot current.
       - echo "Run database migrations on the new image"
       - task: console:run
         vars: { EXEC_FLAGS: "--user deploy", CLI_ARGS: "app:update" }
