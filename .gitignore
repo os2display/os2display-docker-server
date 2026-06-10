@@ -1,3 +1,4 @@
 .env.local
 .env.docker.local
 db_backups/
+.env.symfony.migrated*
