@@ -279,17 +279,18 @@ See [Quick start](#quick-start-fresh-install).
 ```bash
 task db:backup                     # before every task update
 $EDITOR .env                       # bump OS2DISPLAY_VERSION_API
-task update                        # pull, migrate, recreate (app:update runs before the web tier)
+task update                        # pull, stop web tier, migrate, then recreate on new images
 task env:diff                      # check whether the new image added Symfony env keys
                                    # — if yes, edit .env.symfony to match
 ```
 
-`task update` pulls fresh images, runs `bin/console app:update` in a one-off container
-(`task console:run`, which starts only the DB/redis dependencies) to migrate the schema, then
-recreates the containers (preserving named volumes) on the new images. Running the migration
-**before** the web tier comes up means the nginx/screen-client tier never serves traffic against
-an un-migrated schema. Image swaps and container recreation themselves don't touch data — the
-schema rewrite happens inside `app:update`. See [Caveats](#caveats-and-foot-guns) for the full
+`task update` pulls fresh images, **stops the web tier** (`os2display` + `nginx-api`), runs
+`bin/console app:update` in a one-off container (`task console:run`, which starts only the DB/redis
+dependencies) to migrate the schema, then recreates the containers (preserving named volumes) on
+the new images. Stopping the web tier first means no old-image request ever hits the new schema —
+traefik stays up and returns 502/503 for the brief migration window, a clean "down for maintenance"
+rather than errors. Image swaps and container recreation themselves don't touch data — the schema
+rewrite happens inside `app:update`. See [Caveats](#caveats-and-foot-guns) for the full
 reasoning.
 
 #### How do I upgrade the bundled MariaDB across a major version?
@@ -1237,7 +1238,7 @@ churn for the casual review cycle.
 ```text
 Lifecycle
   install              Install the project — first-time setup (interactive)
-  update               Pull images, run app:update (migrate), then recreate containers
+  update               Pull images, stop web tier, migrate, then recreate containers
   up                   Start the stack; blocks until healthchecks pass
   down                 Remove all containers (preserves named volumes)
   stop                 Stop all containers
