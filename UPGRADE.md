@@ -228,18 +228,20 @@ admin commands sometimes do.
 #### 7. First boot
 
 ```bash
-task install                  # pulls the rest of the images, brings up the full stack,
-                              # runs `bin/console app:update` (Doctrine migrations +
-                              # cache:warmup), generates the JWT keypair if missing,
-                              # interactively prompts for tenant + admin user (you can
-                              # skip these if you already have them — your old data is
-                              # still there).
+task install                  # pulls the rest of the images, runs `bin/console app:update`
+                              # (Doctrine migrations + cache:warmup) in a one-off container
+                              # BEFORE bringing the web tier up, then brings up the full
+                              # stack, generates the JWT keypair if missing, and interactively
+                              # prompts for tenant + admin user (skip these if you already
+                              # have them — your old data is still there).
 ```
 
 `task install` reuses the existing data: the bundled mariadb's named volume from 1.x carries
-across, and `app:update` applies any net-new migrations from 3.x on top. The interactive
-tenant + user prompts can be skipped (Ctrl-D) if your existing tenants / admin user are
-already in the data.
+across, and `app:update` applies any net-new migrations from 3.x on top. It runs that migration
+in a one-off `compose run` container (starting only the DB/redis dependencies) **before** the
+nginx/screen-client tier comes up, so the stack never serves traffic against an un-migrated
+schema. The interactive tenant + user prompts can be skipped (Ctrl-D) if your existing tenants /
+admin user are already in the data.
 
 #### 8. Validation
 

@@ -36,10 +36,13 @@ tasks:
       - echo "Installing"
       - ./scripts/install-secrets.sh
       - "{{.COMPOSE}} pull"
-      - "{{.COMPOSE}} up --force-recreate --detach --remove-orphans --wait"
+      # Migrate the schema in a one-off container (starts only DB/redis) BEFORE
+      # the web tier comes up, so the stack never serves an un-migrated schema.
       - echo "Run database migrations and required updates"
-      - task: console
+      - task: console:run
         vars: { CLI_ARGS: "app:update" }
+      - echo "Bring the stack up (schema already current)"
+      - "{{.COMPOSE}} up --force-recreate --detach --remove-orphans --wait"
       - echo "Clearing the cache"
       - task: cache:clear
       - echo "Create jwt key pair"
@@ -52,15 +55,21 @@ tasks:
       - task: show-notes
 
   update:
-    desc: Pull updated images, recreate containers, run app:update (Doctrine migrations + cache:warmup)
+    desc: Pull updated images, run app:update (Doctrine migrations + cache:warmup) before recreating the web tier
     preconditions:
       - sh: "[ -f .env.symfony ]"
         msg: ".env.symfony missing — run 'task env:init' first."
     cmds:
       - "{{.COMPOSE}} pull"
-      - "{{.COMPOSE}} up --force-recreate --detach --remove-orphans --wait"
-      - task: console
+      # Migrate the schema on the newly pulled image in a one-off container
+      # (starts only DB/redis) BEFORE recreating the web tier, so the new
+      # containers boot against an already-current schema. Doctrine migrations
+      # should stay backward-compatible for the brief overlap with the old tier.
+      - echo "Run database migrations on the new image"
+      - task: console:run
         vars: { EXEC_FLAGS: "--user deploy", CLI_ARGS: "app:update" }
+      - echo "Recreate the stack on the new images (schema already current)"
+      - "{{.COMPOSE}} up --force-recreate --detach --remove-orphans --wait"
       - echo "NB! Run 'task templates:install' if the new image added templates."
 
   up:
@@ -147,6 +156,19 @@ tasks:
       EXEC_FLAGS: ""
     cmds:
       - "{{.COMPOSE}} exec {{if .EXEC_FLAGS}}{{.EXEC_FLAGS}} {{end}}os2display bin/console {{.CLI_ARGS}}"
+
+  console:run:
+    desc: |
+      Run a one-off bin/console command in a THROWAWAY os2display container
+      (`compose run --rm`) instead of exec-ing into the running one. It starts
+      only the DB/redis dependencies, NOT the nginx/traefik web tier — so the
+      schema can be migrated BEFORE `task up`, and the stack never serves traffic
+      against an un-migrated schema. Same args as `console`, e.g.
+      `task console:run -- doctrine:migrations:status`.
+    vars:
+      EXEC_FLAGS: ""
+    cmds:
+      - "{{.COMPOSE}} run --rm {{if .EXEC_FLAGS}}{{.EXEC_FLAGS}} {{end}}os2display bin/console {{.CLI_ARGS}}"
 
   cache:clear:
     desc: Clear the application cache
