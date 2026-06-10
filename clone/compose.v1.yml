@@ -154,6 +154,12 @@ services:
       - APP_API_AUTHENTICATION_REFRESH_ENDPOINT=${APP_API_AUTHENTICATION_REFRESH_ENDPOINT}
       - APP_DATA_PULL_INTERVAL=${APP_DATA_PULL_INTERVAL}
       - APP_SCHEDULING_INTERVAL=${APP_SCHEDULING_INTERVAL}
+      # How often the screen client re-checks /client/release.json (ms). confd
+      # renders this into config.json at container start (default 600000 = 10
+      # min). Set to 30s here so the clone picks up a v3 release.json fast during
+      # upgrade testing. Restart the client after changing; running browser
+      # sessions only apply it after a page reload (the client reads it at boot).
+      - APP_RELEASE_TIMESTAMP_INTERVAL_TIMEOUT=${APP_RELEASE_TIMESTAMP_INTERVAL_TIMEOUT:-30000}
       - APP_DEBUG=${APP_DEBUG}
     labels:
       - "traefik.enable=true"
