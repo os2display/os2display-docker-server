@@ -6,6 +6,16 @@
     3.x-shaped .env.symfony.migrated on the host (wraps the api console command
     app:utils:convert-env-to-3x, requires display-api-service >= 2.8)
   - Add new task backup_db to backup the default internal mariadb
+  - Add `task upgrade_check`, a pre-flight for the 3.x migration: verifies the api
+    image provides `app:utils:convert-env-to-3x` (used by `task env_migrate`) and
+    records the bundled mariadb volume name so the 3.x stack reuses it in place
+    (a mismatched `COMPOSE_PROJECT_NAME` would otherwise boot an empty database).
+    Run it before `task env_migrate`.
+  - Bump the `COMPOSE_VERSION_API` example pin to 2.8.0 — the release that ships
+    `app:utils:convert-env-to-3x`.
+  - Stop tracking the generated `docker-compose.yml` and gitignore it (it is
+    site-specific `task _dc_compile` output). Also keeps a later
+    `git checkout` of the 3.x branch from colliding with it.
 
 ## v1.1.2
 
