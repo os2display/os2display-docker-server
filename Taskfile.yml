@@ -182,7 +182,8 @@ tasks:
       issued tokens — screens must re-authenticate). Requires the stack up.
     cmds:
       - |
-        if {{.COMPOSE}} exec -T os2display bin/console lexik:jwt:check-config >/dev/null 2>&1; then
+        # Check if both JWT key files exist AND the config is valid
+        if [ -f ./jwt/private.pem ] && [ -f ./jwt/public.pem ] && {{.COMPOSE}} exec -T os2display bin/console lexik:jwt:check-config >/dev/null 2>&1; then
           echo "JWT keypair OK — leaving it untouched."
         else
           echo "JWT keypair missing or invalid for the current JWT_PASSPHRASE — regenerating."
