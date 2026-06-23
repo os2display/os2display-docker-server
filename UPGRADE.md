@@ -46,8 +46,8 @@ The full breaking-change list is in [CHANGELOG.md](CHANGELOG.md) under
 - **Symfony env vars lose the `APP_` prefix** (except `APP_ENV` and `APP_SECRET`, which Symfony
   defines). `APP_DATABASE_URL` becomes `DATABASE_URL`, `APP_JWT_PASSPHRASE` becomes
   `JWT_PASSPHRASE`, etc. The 2.8 API ships `app:utils:convert-env-to-3x`, which does the rename
-  for you (and converts the admin/client `config.json`) — this repo's `task upgrade_prep` runs
-  it; see the pre-upgrade checklist below.
+  for you (and converts the admin/client `config.json`) — this repo's `task env_migrate` (on the
+  1.x branch) runs it; see the pre-upgrade checklist below.
 - **One env file per service.** The single `.env.docker.local` is gone, replaced by
   `.env.symfony` + `.env.php` + `.env.nginx` + `.env.mariadb` + `.env.traefik` + the
   compose-orchestration `.env`. See [README § Configuration files](README.md#configuration-files).
@@ -63,7 +63,7 @@ The full breaking-change list is in [CHANGELOG.md](CHANGELOG.md) under
 ### Pre-upgrade checklist (while still on 1.x)
 
 Everything in this section runs on the **1.x** checkout, with the stack **still up**. The
-configuration export (`task upgrade_prep`) reads the running application and fetches the live
+configuration export (`task env_migrate`) reads the running application and fetches the live
 admin/client `config.json` — it cannot run once the stack is stopped. Confirm prerequisites
 first:
 
@@ -84,7 +84,7 @@ Then, on the 1.x stack:
 - [ ] **Be on the final 1.x release running 2.8 API images.** The export command ships with
   `os2display-api-service` 2.8.0. Set `COMPOSE_VERSION_API=2.8.0` (or a later 2.x) in
   `.env.docker.local` and `task install` to pull and recreate. The last 1.x release of this repo
-  (v1.2.0) provides `task upgrade_check` / `task upgrade_prep`; upgrade to it first if you are on
+  (v1.2.0) provides `task upgrade_check` / `task env_migrate`; upgrade to it first if you are on
   an earlier 1.x.
 - [ ] **Run the pre-flight check:** `task upgrade_check`. It confirms the api image provides
   `app:utils:convert-env-to-3x` and prints the bundled MariaDB volume name
@@ -92,21 +92,22 @@ Then, on the 1.x stack:
   place, and only does so when the 3.x `.env` keeps the same `COMPOSE_PROJECT_NAME`. A different
   project name silently boots an *empty* database (see step 4).
 - [ ] **Back up the database:** `task backup_db` (1.x), and keep the dump somewhere off-host.
-- [ ] **Export the configuration in 3.x shape:** `task upgrade_prep`. It writes `env.3x` — the
-  loaded env converted to 3.x names *plus* the admin/client `config.json` conversion. The
-  trailing advisory block lists infrastructure variables (`COMPOSE_*`, `PHP_*`, `NGINX_*`,
-  `MARIADB_*`) that move to per-service files in 3.x, never into the application env.
+- [ ] **Export the configuration in 3.x shape:** `task env_migrate` (1.x). It writes
+  `.env.symfony.migrated` — the loaded env converted to 3.x names *plus* the admin/client
+  `config.json` conversion. A trailing advisory block lists infrastructure variables
+  (`COMPOSE_*`, `PHP_*`, `NGINX_*`, `MARIADB_*`) that move to per-service files in 3.x, never
+  into the application env.
 - [ ] **Copy env files + JWT keys aside** in case a rollback is needed:
 
   ```bash
   mkdir -p /tmp/os2display-1x-backup
-  cp .env .env.docker.local .env.local env.3x /tmp/os2display-1x-backup/  # whatever subset you have
+  cp .env .env.docker.local .env.local .env.symfony.migrated /tmp/os2display-1x-backup/  # whatever subset you have
   cp -r jwt/ /tmp/os2display-1x-backup/
   ```
 
-`env.3x` contains every application secret (`APP_SECRET`, database and OIDC credentials, ...). It
-is gitignored on both branches; treat it like a credentials file and it will survive the branch
-switch in step 2 untouched.
+`.env.symfony.migrated` contains every application secret (`APP_SECRET`, database and OIDC
+credentials, ...). It is gitignored on both branches; treat it like a credentials file and it
+will survive the branch switch in step 2 untouched.
 
 You do **not** need to copy `./media/` aside for the rollback. It's a host bind-mount, not a
 docker named volume — `task purge`, `task down --volumes`, and `docker compose down --volumes`
@@ -169,15 +170,15 @@ per-service `env_file:` directives:
 | `.env.mariadb` | MariaDB credentials. |
 | `.env.traefik` | Traefik dashboard auth, Let's Encrypt email, cert provider. |
 
-Build `.env.symfony` from the `env.3x` you exported in the pre-upgrade checklist, then bootstrap
-the rest:
+Build `.env.symfony` from the `.env.symfony.migrated` you exported in the pre-upgrade checklist
+(it survives the branch switch — gitignored on both branches), then bootstrap the rest:
 
 ```bash
-# 1. Application config from env.3x. task env:migrate detects env.3x, splits off the
-#    infrastructure advisory (into .env.symfony.infra-advisory) and writes the rest to
-#    .env.symfony.migrated for review.
+# 1. Application config. task env:migrate finds the .env.symfony.migrated produced by 'task
+#    env_migrate' on 1.x and splits its trailing infrastructure advisory into
+#    .env.symfony.infra-advisory, leaving the clean application env in .env.symfony.migrated.
 task env:migrate
-diff -u env.3x .env.symfony.migrated      # sanity check
+$EDITOR .env.symfony.migrated             # sanity check
 mv .env.symfony.migrated .env.symfony
 
 # 2. Per-service files + .env. task env:init creates .env (prompts for the domain) and the
@@ -194,8 +195,8 @@ $EDITOR .env
 # 4. Finish .env.symfony.
 $EDITOR .env.symfony
 # - Set DATABASE_URL serverVersion to "11.4.10-MariaDB" (post-MariaDB upgrade — see step 4).
-#   env.3x carries the old 10.x serverVersion through verbatim; this is the one value env:migrate
-#   leaves for you.
+#   The converter carries the old 10.x serverVersion through verbatim; this is the one value
+#   env:migrate leaves for you.
 # - Distribute the keys from .env.symfony.infra-advisory: COMPOSE_* -> .env, PHP_* -> .env.php,
 #   NGINX_* -> .env.nginx, MARIADB_* -> .env.mariadb.
 
@@ -215,17 +216,17 @@ task env:diff
 ```
 
 <details>
-<summary>Manual fallback (no `env.3x` — pre-2.8 images, or stack already stopped)</summary>
+<summary>Manual fallback (no `.env.symfony.migrated` — pre-2.8 images, or stack already stopped)</summary>
 
-If you never produced `env.3x` (the 1.x install predates the converter, or the stack is already
-down), `task env:migrate` falls back to a sed conversion of `.env.docker.local`: it strips the
-`APP_` prefix from every key except the framework-defined trio (`APP_ENV` / `APP_SECRET` /
-`APP_DEBUG`) and writes `.env.symfony.migrated`. This path **cannot** see the admin/client
-`config.json`, so you also convert those by hand and apply the per-site renames the converter
-would have done:
+If you never produced `.env.symfony.migrated` (the 1.x install predates the converter, or the
+stack was already down), `task env:migrate` falls back to a sed conversion of `.env.docker.local`:
+it strips the `APP_` prefix from every key except the framework-defined trio (`APP_ENV` /
+`APP_SECRET` / `APP_DEBUG`) and writes `.env.symfony.migrated`. This path **cannot** see the
+admin/client `config.json`, so you also convert those by hand and apply the per-site renames the
+converter would have done:
 
 ```bash
-task env:migrate                                  # sed path when env.3x is absent
+task env:migrate                                  # sed path when .env.symfony.migrated is absent
 diff -u .env.docker.local .env.symfony.migrated
 $EDITOR .env.symfony.migrated
 ```

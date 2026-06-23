@@ -1250,7 +1250,7 @@ Lifecycle
 Bootstrap and env-file tooling
   env:init             Bootstrap .env.symfony from the API image
   env:diff             Compare .env.symfony against the image's shipped example
-  env:migrate          Stage .env.symfony.migrated from env.3x (preferred) or a 1.x .env.docker.local
+  env:migrate          Refine the 1.x 'task env_migrate' output, or convert a 1.x .env.docker.local
   env:traefik          Interactive .env.traefik setup            (alias: traefik_env)
 
 Operations
