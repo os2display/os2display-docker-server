@@ -284,18 +284,66 @@ tasks:
         rm -f "$tmp"
 
   env:migrate:
-    desc: Convert a 1.x .env.docker.local into a 3.x-shaped .env.symfony.migrated
+    desc: Stage a 3.x-shaped .env.symfony.migrated — from env.3x (preferred) or a 1.x .env.docker.local
     cmds:
       - |
+        OUT=.env.symfony.migrated
+
+        # Preferred path: env.3x produced by `task upgrade_prep` on the 1.x
+        # stack (the API's app:utils:convert-env-to-3x command). It already
+        # carries the loaded values under their 3.x names AND the admin/client
+        # config.json conversion the sed path below can't see — so when it's
+        # present we just split off the trailing infrastructure-advisory
+        # comment block (COMPOSE_*/PHP_*/NGINX_*/MARIADB_* notes) into a
+        # reminder, and the rest becomes .env.symfony directly.
+        if [ -f env.3x ]; then
+          echo "Found env.3x from the 1.x upgrade prep — using it as the source."
+          # env.3x ends with a trailing advisory block the converter
+          # introduces with a fixed marker line; everything above it is the
+          # application env. Split at the marker: app env to .env.symfony,
+          # the advisory to its own file (surfaced below, not buried in the
+          # app env).
+          ADVISORY=.env.symfony.infra-advisory
+          rm -f "$ADVISORY"
+          awk -v adv="$ADVISORY" '
+            /^# The following loaded variables are NOT read/ { infra = 1 }
+            infra { print > adv; next }
+            { print }
+          ' env.3x > "$OUT"
+          echo "Wrote $OUT (from env.3x)."
+          if [ -s "$ADVISORY" ]; then
+            echo ""
+            echo "Infrastructure variables were split into $ADVISORY."
+            echo "They do NOT belong in .env.symfony — distribute them across the"
+            echo "per-service files of the 3.x layout:"
+            echo "  COMPOSE_* -> .env       PHP_*    -> .env.php"
+            echo "  NGINX_*   -> .env.nginx MARIADB_* -> .env.mariadb"
+          fi
+          echo ""
+          echo "Review with: diff -u env.3x $OUT"
+          echo "Apply with:  mv $OUT .env.symfony"
+          echo ""
+          echo "Still set by hand: DATABASE_URL serverVersion=11.4.10-MariaDB"
+          echo "(after the MariaDB upgrade — see UPGRADE.md step 6)."
+          exit 0
+        fi
+
+        # Fallback path: no env.3x (older 1.x without the converter command, or
+        # the stack is already down). Convert a 1.x .env.docker.local by sed —
+        # an APP_ strip plus the per-site renames the converter would do.
         if [ -f .env.docker.local ]; then
           SRC=.env.docker.local
         elif [ -f .env.local ]; then
           SRC=.env.local
         else
-          echo "Error: neither .env.docker.local nor .env.local exists."
+          echo "Error: no env.3x, .env.docker.local or .env.local found."
+          echo "On the 1.x stack, prefer 'task upgrade_prep' to produce env.3x."
           exit 1
         fi
-        OUT=.env.symfony.migrated
+        echo "No env.3x found — falling back to the sed conversion of $SRC."
+        echo "(The env.3x path from 'task upgrade_prep' on 1.x is preferred:"
+        echo " it also converts the admin/client config.json, which sed can't.)"
+        echo ""
         # Strip APP_ prefix from every key EXCEPT the framework-defined trio
         # (APP_ENV, APP_SECRET, APP_DEBUG) — Symfony recognises those by name,
         # and renaming them silently breaks env-driven debug/secret/env config.

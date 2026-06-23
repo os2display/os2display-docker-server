@@ -133,12 +133,27 @@ services:
         required: true
       - path: .env.mariadb.local
         required: false
+    environment:
+      # Run mariadb-upgrade automatically when the server version recorded in
+      # the data dir is older than the running image (e.g. the 1.x 10.x → 3.x
+      # 11.4 jump). Idempotent: the entrypoint version-compares first and does
+      # nothing on an already-current data dir, so it's safe to leave on for
+      # future major bumps too. It also refreshes the healthcheck user and its
+      # /var/lib/mysql/.my-healthcheck.cnf, which rescues data dirs old enough
+      # to predate that user. `task db:upgrade` remains available for an
+      # explicit, operator-driven run.
+      - MARIADB_AUTO_UPGRADE=1
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 30s
       timeout: 5s
       retries: 5
       start_period: 30s
+    # The default 10s stop grace can SIGKILL a server still flushing a dirty
+    # InnoDB buffer pool. A hard kill leaves the data dir needing crash
+    # recovery — unsupported across a major-version bump — so give the engine
+    # room for a clean shutdown, especially right before the 10.x → 11.4 cut.
+    stop_grace_period: 1m
     volumes:
       - mariadb:/var/lib/mysql:rw
 

@@ -296,8 +296,10 @@ reasoning.
 #### How do I upgrade the bundled MariaDB across a major version?
 
 See [UPGRADE.md](UPGRADE.md). The 1.x → 3.x section has the recipe (it covers the 10.x → 11.4
-jump that came with the 3.0 release); the same `task db:backup` → `task db:upgrade` →
-update `DATABASE_URL` `serverVersion=` flow applies to any future major bump.
+jump that came with the 3.0 release). The mariadb service sets `MARIADB_AUTO_UPGRADE=1`, so
+`mariadb-upgrade` runs automatically the first time a newer image starts against the existing
+data dir; the manual flow for any future major bump is `task db:backup` → bump the image tag →
+`task db:upgrade` (explicit, idempotent re-run) → update `DATABASE_URL` `serverVersion=`.
 
 #### How do I switch from Let's Encrypt to a custom certificate?
 
@@ -1248,7 +1250,7 @@ Lifecycle
 Bootstrap and env-file tooling
   env:init             Bootstrap .env.symfony from the API image
   env:diff             Compare .env.symfony against the image's shipped example
-  env:migrate          Convert a 1.x .env.docker.local to .env.symfony.migrated
+  env:migrate          Stage .env.symfony.migrated from env.3x (preferred) or a 1.x .env.docker.local
   env:traefik          Interactive .env.traefik setup            (alias: traefik_env)
 
 Operations
