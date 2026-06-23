@@ -148,7 +148,7 @@ tasks:
     cmds:
       - |
         domain=$(grep -E '^COMPOSE_SERVER_DOMAIN=' "{{.DIR}}/../.env.docker.local" | cut -d= -f2- | tr -d '"')
-        {{.DC_V1}} exec -T api bin/console app:utils:convert-env-to-3x \
+        {{.DC_V1}} exec -T --user deploy api bin/console app:utils:convert-env-to-3x \
           --output=env --app-url="https://${domain}" > "{{.DIR}}/../.env.symfony.migrated"
         echo "Wrote .env.symfony.migrated. Review it, bring v1 down, then: task env:migrate"
 
