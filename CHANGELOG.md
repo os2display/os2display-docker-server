@@ -22,7 +22,9 @@ See the [v2.x.x — Skipped](#v2xx---skipped) entry below for why this major ski
   templates.
 - `task env:diff` compares your `.env.symfony` against the example shipped in the
   currently-pinned API image.
-- `task env:migrate` rewrites a 1.x `.env.docker.local` into the v3 layout.
+- `task env:migrate` refines the `.env.symfony.migrated` that the 1.x `task env_migrate`
+  produces via the 2.8 API's `app:utils:convert-env-to-3x` — splitting off the infrastructure
+  advisory — and falls back to the sed rewrite of a 1.x `.env.docker.local` otherwise.
 - Per-service `.env.<svc>.local` override layer for site-specific tuning; gitignored.
 - Compose profiles (`COMPOSE_PROFILES=mariadb,traefik`) gate built-in services — drop
   `mariadb` for an external DB, drop `traefik` for an external proxy.
@@ -38,6 +40,16 @@ See the [v2.x.x — Skipped](#v2xx---skipped) entry below for why this major ski
   — return only when the stack is genuinely ready (no more `sleep 20` race).
 - New `task db:backup` (online `mariadb-dump` to `./backup/<ts>.sql.gz`) and `task db:upgrade`
   (idempotent `mariadb-upgrade`).
+- The mariadb service sets `MARIADB_AUTO_UPGRADE=1`, so `mariadb-upgrade` runs automatically on
+  the first 11.4 boot against a carried-over 10.x data dir (the 1.x → 3.x case) — no manual
+  step required for the system-table upgrade. It also refreshes the healthcheck user, rescuing
+  data dirs old enough to predate it.
+- The mariadb service sets `stop_grace_period: 1m`, so the engine gets room for a clean shutdown
+  instead of being SIGKILLed mid-flush by the 10s default — important right before a major bump.
+- `UPGRADE.md` restructured around the 2.8 converter: a pre-upgrade checklist that exports the
+  running 1.x configuration (`task env_migrate`) *before* the stack is stopped, converter-first
+  env migration with the sed rename demoted to a fallback, MariaDB auto-upgrade and data-volume
+  continuity notes, and the `rm docker-compose.yml` step needed before `git checkout`.
 - New MariaDB diagnostics: `task db:metrics`, `db:processes`, `db:errors`.
 - New `task php:opcache` — operator report on the FPM pool's OPcache (memory, interned
   strings, cached-key headroom, hit rate, restarts, preload) with warnings mapped to the

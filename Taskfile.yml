@@ -182,7 +182,8 @@ tasks:
       issued tokens — screens must re-authenticate). Requires the stack up.
     cmds:
       - |
-        if {{.COMPOSE}} exec -T os2display bin/console lexik:jwt:check-config >/dev/null 2>&1; then
+        # Check if both JWT key files exist AND the config is valid
+        if [ -f ./jwt/private.pem ] && [ -f ./jwt/public.pem ] && {{.COMPOSE}} exec -T os2display bin/console lexik:jwt:check-config >/dev/null 2>&1; then
           echo "JWT keypair OK — leaving it untouched."
         else
           echo "JWT keypair missing or invalid for the current JWT_PASSPHRASE — regenerating."
@@ -284,18 +285,68 @@ tasks:
         rm -f "$tmp"
 
   env:migrate:
-    desc: Convert a 1.x .env.docker.local into a 3.x-shaped .env.symfony.migrated
+    desc: Stage a 3.x-shaped .env.symfony.migrated — refine the one from 1.x 'task env_migrate', or convert a 1.x .env.docker.local
     cmds:
       - |
+        OUT=.env.symfony.migrated
+        ADVISORY=.env.symfony.infra-advisory
+
+        # Preferred path: .env.symfony.migrated produced on the 1.x stack by
+        # `task env_migrate` (the API's app:utils:convert-env-to-3x command),
+        # carried across the branch switch (it is gitignored on both branches).
+        # It already carries the loaded values under their 3.x names AND the
+        # admin/client config.json conversion the sed path below can't see — so
+        # all that's left is to split the trailing infrastructure-advisory
+        # comment block (COMPOSE_*/PHP_*/NGINX_*/MARIADB_* notes) out of it.
+        # Done in place: input and output are the same file.
+        if [ -f "$OUT" ]; then
+          echo "Found $OUT from the 1.x 'task env_migrate' — splitting the infra advisory."
+          # The advisory is a trailing block the converter introduces with a
+          # fixed marker line; everything above it is the application env. Split
+          # at the marker: app env stays in $OUT, the advisory goes to its own
+          # file (surfaced below, not buried in the app env). Re-running is a
+          # no-op once the advisory has already been removed.
+          rm -f "$ADVISORY"
+          TMP=$(mktemp "${OUT}.XXXXXX")
+          awk -v adv="$ADVISORY" '
+            /^# The following loaded variables are NOT read/ { infra = 1 }
+            infra { print > adv; next }
+            { print }
+          ' "$OUT" > "$TMP"
+          mv "$TMP" "$OUT"
+          if [ -s "$ADVISORY" ]; then
+            echo ""
+            echo "Infrastructure variables were split into $ADVISORY."
+            echo "They do NOT belong in .env.symfony — distribute them across the"
+            echo "per-service files of the 3.x layout:"
+            echo "  COMPOSE_* -> .env       PHP_*    -> .env.php"
+            echo "  NGINX_*   -> .env.nginx MARIADB_* -> .env.mariadb"
+          fi
+          echo ""
+          echo "Review $OUT, then apply with:  mv $OUT .env.symfony"
+          echo ""
+          echo "Still set by hand: DATABASE_URL serverVersion=11.4.10-MariaDB"
+          echo "(after the MariaDB upgrade — see UPGRADE.md step 4)."
+          exit 0
+        fi
+
+        # Fallback path: no .env.symfony.migrated (the 1.x install predated the
+        # converter, or the stack was already down). Convert a 1.x
+        # .env.docker.local by sed — an APP_ strip plus the per-site renames the
+        # converter would do.
         if [ -f .env.docker.local ]; then
           SRC=.env.docker.local
         elif [ -f .env.local ]; then
           SRC=.env.local
         else
-          echo "Error: neither .env.docker.local nor .env.local exists."
+          echo "Error: no .env.symfony.migrated, .env.docker.local or .env.local found."
+          echo "On the 1.x stack, prefer 'task env_migrate' to produce .env.symfony.migrated."
           exit 1
         fi
-        OUT=.env.symfony.migrated
+        echo "No .env.symfony.migrated found — falling back to the sed conversion of $SRC."
+        echo "(Producing .env.symfony.migrated with 'task env_migrate' on 1.x is preferred:"
+        echo " it also converts the admin/client config.json, which sed can't.)"
+        echo ""
         # Strip APP_ prefix from every key EXCEPT the framework-defined trio
         # (APP_ENV, APP_SECRET, APP_DEBUG) — Symfony recognises those by name,
         # and renaming them silently breaks env-driven debug/secret/env config.
