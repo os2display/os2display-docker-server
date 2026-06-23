@@ -76,6 +76,15 @@ The project uses a `Taskfile.yml` to simplify common operations. Below is a list
 - **`task logs`**: Follows the logs from the Docker containers.
 - **`task cc`**: Clears the cache in the application.
 
+### Upgrading to 3.x
+- **`task env_migrate`**: Converts the configuration of the running 2.x installation
+  (loaded env vars plus the served admin/client `config.json`) to a 3.x-shaped
+  `.env.symfony.migrated` on the host, via the api console command
+  `app:utils:convert-env-to-3x` (requires display-api-service >= 2.8). The site's
+  public URL is taken from `COMPOSE_SERVER_DOMAIN`; extra arguments are forwarded,
+  e.g. `task env_migrate -- --skip-config-json`. Review the result before using it
+  as the starting point for the 3.x application env.
+
 ### Pre-installation Notes
 Before running `task install`, ensure the following:
 1. Update `.env.docker.local` with your domain name (replace all 5 instances) and set secure passwords.

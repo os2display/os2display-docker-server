@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+  - Add new task env_migrate that converts the running 2.x configuration to a
+    3.x-shaped .env.symfony.migrated on the host (wraps the api console command
+    app:utils:convert-env-to-3x, requires display-api-service >= 2.8)
   - Add new task backup_db to backup the default internal mariadb
 
 ## v1.1.2

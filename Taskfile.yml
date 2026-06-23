@@ -18,6 +18,7 @@ tasks:
       - echo "  user_add        Add a new user"
       - echo "  load_templates  Load templates and screen layouts"
       - echo "  backup_db       Performs a database dump, if you use the default internal mariadb."
+      - echo "  env_migrate     Convert the running 2.x config to .env.symfony.migrated (for the 3.x upgrade)"
       - echo ""
 
 
@@ -185,6 +186,42 @@ tasks:
         docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml exec mariadb mysqldump -u $DB_USER -p$DB_PASSWORD $DB_NAME > $FILENAME
         if [ $? -eq 0 ]; then
           echo "Database backup saved to $FILENAME"
+        fi
+
+  env_migrate:
+    desc: Convert the running 2.x configuration to a 3.x-shaped .env.symfony.migrated on the host. Extra args are forwarded to the console command, e.g. 'task env_migrate -- --skip-config-json'.
+    cmds:
+      - |
+        OUT=.env.symfony.migrated
+        # The console command ships with display-api-service >= 2.8; fail with
+        # a hint instead of a stack trace on older images.
+        if ! docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml exec -T api bin/console list app:utils --raw 2>/dev/null | grep -q '^app:utils:convert-env-to-3x'; then
+          echo "Error: the api container does not provide app:utils:convert-env-to-3x."
+          echo "Update COMPOSE_VERSION_API to a release that includes it (>= 2.8) and run 'task up' first."
+          exit 1
+        fi
+        # The site's public URL is needed to fetch admin/client config.json;
+        # default --app-url from COMPOSE_SERVER_DOMAIN unless the caller set it.
+        ARGS="{{.CLI_ARGS}}"
+        case "$ARGS" in *--app-url*) ;; *)
+          DOMAIN=$(grep ^COMPOSE_SERVER_DOMAIN= .env.docker.local | cut -d '=' -f 2)
+          if [ -n "$DOMAIN" ]; then
+            ARGS="$ARGS --app-url=https://$DOMAIN"
+          fi
+        ;; esac
+        # --output=env writes the dotenv document to stdout and all warnings
+        # to stderr. Go through a temp file so a failed run cannot leave a
+        # truncated $OUT behind.
+        TMP=$(mktemp "$OUT.XXXXXX")
+        if docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml exec -T api bin/console app:utils:convert-env-to-3x --output=env $ARGS > "$TMP"; then
+          mv "$TMP" "$OUT"
+          echo ""
+          echo "Wrote $OUT."
+          echo "Review it and use it as the starting point for the 3.x application env."
+        else
+          rm -f "$TMP"
+          echo "Error: conversion failed; $OUT was not written."
+          exit 1
         fi
 
   _show_preinstall_notes:
