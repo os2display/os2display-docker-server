@@ -75,8 +75,12 @@ The project uses a `Taskfile.yml` to simplify common operations. Below is a list
 ### Maintenance
 - **`task logs`**: Follows the logs from the Docker containers.
 - **`task cc`**: Clears the cache in the application.
+- **`task backup_db`**: Dumps the bundled MariaDB database to `db_backups/`.
 
 ### Upgrading to 3.x
+- **`task upgrade_check`**: Pre-flight checks before the upgrade — verifies the api image
+  provides `app:utils:convert-env-to-3x` and records the bundled MariaDB volume name. Run it
+  before `task env_migrate`.
 - **`task env_migrate`**: Converts the configuration of the running 2.x installation
   (loaded env vars plus the served admin/client `config.json`) to a 3.x-shaped
   `.env.symfony.migrated` on the host, via the api console command
@@ -94,6 +98,49 @@ For a full list of tasks, run:
 ```bash
 task --list
 ```
+
+## Preparing an upgrade to 3.x
+
+This is the last planned 1.x release of this repository. The 3.x line (the
+`release/3.0.0` branch, `main` once released) runs the upstream
+[`display-api-service`](https://github.com/os2display/display-api-service) 3.x
+images, which bundle the admin and screen client into the API image. The full
+migration recipe lives in `UPGRADE.md` on the 3.x branch; this release ships
+the tooling that prepares it, driven by the `app:utils:convert-env-to-3x`
+command that the 2.8 API images provide.
+
+The command converts the configuration of the *running* installation — the
+values the application has actually loaded, plus the live admin and client
+`config.json` — to 3.x environment configuration. Because it reads the running
+application, the preparation must happen **before** the 1.x stack is stopped.
+
+While the stack is up:
+
+```bash
+# 1. Be on 2.8 images: set COMPOSE_VERSION_API=2.8.0 (or a later 2.x)
+#    in .env.docker.local, then pull and recreate.
+task install
+
+# 2. Verify the prerequisites (converter available, mariadb volume found):
+task upgrade_check
+
+# 3. Take a database backup and keep it somewhere safe:
+task backup_db
+
+# 4. Convert the configuration to 3.x format:
+task env_migrate
+```
+
+`task env_migrate` writes `.env.symfony.migrated`, the starting point for the
+3.x `.env.symfony`. It contains every application secret (APP_SECRET, database
+and OIDC credentials, ...) — it is gitignored, treat it like a credentials
+file. The converter's notes on stderr flag infrastructure variables
+(`COMPOSE_*`, `PHP_*`, `NGINX_*`, `MARIADB_*`) that move to the per-service env
+files of the 3.x layout instead.
+
+With `.env.symfony.migrated` and the database dump in hand, continue with
+[UPGRADE.md](https://github.com/os2display/os2display-docker-server/blob/release/3.0.0/UPGRADE.md)
+on the 3.x branch.
 
 
 

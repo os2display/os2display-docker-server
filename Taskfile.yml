@@ -18,6 +18,7 @@ tasks:
       - echo "  user_add        Add a new user"
       - echo "  load_templates  Load templates and screen layouts"
       - echo "  backup_db       Performs a database dump, if you use the default internal mariadb."
+      - echo "  upgrade_check   Pre-flight checks before the 3.x upgrade (run before env_migrate)"
       - echo "  env_migrate     Convert the running 2.x config to .env.symfony.migrated (for the 3.x upgrade)"
       - echo ""
 
@@ -223,6 +224,55 @@ tasks:
           echo "Error: conversion failed; $OUT was not written."
           exit 1
         fi
+
+  upgrade_check:
+    desc: Pre-flight checks before the 3.x upgrade. Run while the stack is up, before env_migrate.
+    cmds:
+      - echo ""
+      - echo "Upgrade pre-flight (1.x -> 3.x)"
+      - echo "===================================================="
+      - |
+        FAIL=0
+
+        # The conversion command (used by 'task env_migrate') ships with
+        # os2display-api-service 2.8.0.
+        if docker compose --env-file .env.local --env-file .env.docker.local -f docker-compose.yml exec -T api bin/console list app:utils --raw 2>/dev/null | grep -q app:utils:convert-env-to-3x; then
+          echo "OK    The api image provides app:utils:convert-env-to-3x"
+        else
+          echo "FAIL  The api image does not provide app:utils:convert-env-to-3x."
+          echo "      Set COMPOSE_VERSION_API=2.8.0 (or a later 2.x) in .env.docker.local,"
+          echo "      run 'task install' to pull and recreate, then re-run this task."
+          FAIL=1
+        fi
+
+        # The 3.x stack reuses the mariadb docker volume in place. It resolves
+        # the volume as <COMPOSE_PROJECT_NAME>_mariadb, so the 3.x .env MUST
+        # carry the same project name — a different name silently boots an
+        # EMPTY database. Record the volume name printed below.
+        if grep -q '^INTERNAL_DATABASE=true' .env.docker.local; then
+          PROJECT=$(grep ^COMPOSE_PROJECT_NAME= .env.local | cut -d '=' -f 2)
+          if docker volume ls -q | grep -wq "${PROJECT}_mariadb"; then
+            echo "OK    MariaDB volume found: ${PROJECT}_mariadb"
+            echo "      Keep COMPOSE_PROJECT_NAME=${PROJECT} in the 3.x .env, or the new"
+            echo "      stack will create a fresh, empty database volume."
+          else
+            echo "FAIL  Expected mariadb volume '${PROJECT}_mariadb' not found."
+            echo "      Check 'docker volume ls' for the volume your database lives in"
+            echo "      and which COMPOSE_PROJECT_NAME produces it."
+            FAIL=1
+          fi
+        else
+          echo "SKIP  INTERNAL_DATABASE is not 'true' — no bundled mariadb volume to check."
+        fi
+
+        echo "===================================================="
+        if [ "$FAIL" -ne 0 ]; then
+          echo "Pre-flight FAILED — fix the items above before 'task env_migrate'."
+          exit 1
+        fi
+        echo "Pre-flight passed. Next steps (while the stack is still up):"
+        echo "  1. task backup_db      (keep the dump somewhere safe)"
+        echo "  2. task env_migrate    (writes .env.symfony.migrated)"
 
   _show_preinstall_notes:
     cmds:
