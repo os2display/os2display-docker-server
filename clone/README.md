@@ -79,15 +79,15 @@ task jwt:ensure                                    # validate the carried-over J
 **How the env conversion maps to the clone.** `task env:migrate` here takes its **sed fallback** — the clone
 carries the v1 `.env.docker.local`, not a `.env.symfony.migrated` — so it strips the `APP_` prefix off the
 Symfony app vars. Drop the `COMPOSE_*` / `INTERNAL_*` block it leaves behind; those belong in `.env`. The sed
-path covers only the app env. The admin/client `config.json` settings (Rejseplanen key, touch regions,
-pull/scheduling intervals, release-check timeout, …) are converted by the 2.8 API's
-`app:utils:convert-config-json-to-env` — it reads an admin/client `config.json` (file or URL) and prints the
-matching `ADMIN_*` / `CLIENT_*` lines to add to `.env.symfony`. To carry those across — and to rehearse the real
-production migration, which runs `app:utils:convert-env-to-3x` **and** `app:utils:convert-config-json-to-env`
-for you — run the clone's v1 stack on 2.8 API images and follow [UPGRADE.md](../UPGRADE.md)'s “Pre-upgrade
-checklist” to produce `.env.symfony.migrated` before `v1:down`; `task env:migrate` then just splits the
-infrastructure advisory instead of running the sed fallback. The clone uses the external `create-db` schema, so
-UPGRADE.md's bundled-MariaDB 10→11 auto-upgrade (step 4) does not apply here.
+path does the `APP_` strip only — it does **not** carry over the admin/client `config.json` settings
+(Rejseplanen key, touch regions, pull/scheduling intervals, release-check timeout, …). Those are converted by
+the 2.8 API's `app:utils:convert-env-to-3x`, which — run **pre-upgrade on a 2.8 install while it's up** —
+converts **both** the env vars and the admin/client `config.json` into a single `.env.symfony.migrated`. To get
+them, rehearse the real production migration: run the clone's v1 stack on 2.8 API images and follow
+[UPGRADE.md](../UPGRADE.md)'s “Pre-upgrade checklist” to produce `.env.symfony.migrated` before `v1:down`;
+`task env:migrate` then just splits the infrastructure advisory instead of running the sed fallback. Otherwise
+re-apply any customised `ADMIN_*` / `CLIENT_*` settings to `.env.symfony` by hand. The clone uses the external
+`create-db` schema, so UPGRADE.md's bundled-MariaDB 10→11 auto-upgrade (step 4) does not apply here.
 
 Migrate via `console:run` (a throwaway `compose run` container that starts only the DB/redis
 dependencies) **before** `task up`, so the v3 stack never serves against an un-migrated schema. The cloned
