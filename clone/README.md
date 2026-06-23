@@ -55,39 +55,47 @@ task -t clone/Taskfile.yml v1:up       # boot in v1 mode and verify (see below)
 ```
 
 `cd clone && task <name>` works too (Task auto-discovers the Taskfile). Available tasks: `init`, `create-db`,
-`clone`, `reclone`, `dump`, `restore`, `v1:up`, `v1:pull`, `v1:down`, `v1:logs`, `v1:ps`.
+`clone`, `reclone`, `dump`, `restore`, `v1:up`, `v1:env-migrate`, `v1:pull`, `v1:down`, `v1:logs`, `v1:ps`.
 
 To start a clone over from scratch (e.g. after a v3 conversion), use [`reclone`](#re-running-a-clone) instead of
 `clone` — it tears the stale state down first.
 
-After verifying the clone in v1 mode (next section), convert the **same** clone in place to v3:
+After verifying the clone in v1 mode (next section), convert the **same** clone in place to v3. This is the
+clone-shaped run of [UPGRADE.md](../UPGRADE.md) (itself the “Option A” supplement to the authoritative
+[display-api-service guide](https://github.com/os2display/display-api-service/blob/main/UPGRADE.md)) — read that
+for the *why*; the clone deltas are spelled out below.
 
 ```bash
-task -t clone/Taskfile.yml v1:down                 # stop the v1 stack first
-task env:migrate                                   # sed fallback: strips APP_ off the cloned .env.docker.local
-$EDITOR .env.symfony.migrated                      # drop the COMPOSE_*/INTERNAL_* block (-> .env); see note
-mv .env.symfony.migrated .env.symfony              # REQUIRED before env:init (see note below)
-task env:init                                      # fill in any missing per-service env files
-# Migrate the schema in a one-off container (DB/redis only, no web tier), BEFORE `up`:
-task console:run -- doctrine:migrations:status     # inspect: a cloned DB carries 2.x history
-task console:run -- doctrine:migrations:rollup --no-interaction   # consolidate that history
-task console:run -- app:update                     # migrate the DB schema to v3
+# 1. Export the config in 3.x shape WHILE the v1 clone is still up, on 2.8.0+ images.
+#    (Set COMPOSE_VERSION_API=2.8.0 in .env.docker.local and re-run v1:up if it isn't — the
+#     converter ships in the 2.8 API.) This is the clone's stand-in for the guide's `task env_migrate`.
+task -t clone/Taskfile.yml v1:env-migrate          # -> .env.symfony.migrated (env + admin/client config.json)
+task -t clone/Taskfile.yml v1:down                 # stop the v1 stack
+
+# 2. Rewrite env (UPGRADE.md Step 4).
+task env:migrate                                   # splits the infra advisory out of .env.symfony.migrated
+$EDITOR .env.symfony.migrated                      # sanity check, then:
+mv .env.symfony.migrated .env.symfony
+task env:init                                      # create the per-service files (leaves .env.symfony alone)
+$EDITOR .env                                       # OS2DISPLAY_VERSION_API, COMPOSE_PROFILES, keep COMPOSE_PROJECT_NAME
+$EDITOR .env.symfony                               # distribute .env.symfony.infra-advisory; DATABASE_URL serverVersion = your external DB
+
+# 3. Migrate the schema in a one-off container (DB/redis only, no web tier), BEFORE `up`.
+task console:run -- doctrine:migrations:rollup --no-interaction   # consolidate the cloned 2.x history
+task console:run -- app:update                     # migrate the DB schema to v3 + install templates/layouts
 task up                                            # bring the v3 stack up — schema already current
 task jwt:ensure                                    # validate the carried-over JWT keypair
 ```
 
-**How the env conversion maps to the clone.** `task env:migrate` here takes its **sed fallback** — the clone
-carries the v1 `.env.docker.local`, not a `.env.symfony.migrated` — so it strips the `APP_` prefix off the
-Symfony app vars. Drop the `COMPOSE_*` / `INTERNAL_*` block it leaves behind; those belong in `.env`. The sed
-path does the `APP_` strip only — it does **not** carry over the admin/client `config.json` settings
-(Rejseplanen key, touch regions, pull/scheduling intervals, release-check timeout, …). Those are converted by
-the 2.8 API's `app:utils:convert-env-to-3x`, which — run **pre-upgrade on a 2.8 install while it's up** —
-converts **both** the env vars and the admin/client `config.json` into a single `.env.symfony.migrated`. To get
-them, rehearse the real production migration: run the clone's v1 stack on 2.8 API images and follow
-[UPGRADE.md](../UPGRADE.md)'s “Pre-upgrade checklist” to produce `.env.symfony.migrated` before `v1:down`;
-`task env:migrate` then just splits the infrastructure advisory instead of running the sed fallback. Otherwise
-re-apply any customised `ADMIN_*` / `CLIENT_*` settings to `.env.symfony` by hand. The clone uses the external
-`create-db` schema, so UPGRADE.md's bundled-MariaDB 10→11 auto-upgrade (step 4) does not apply here.
+**Env conversion requires the converter export — there is no sed fallback.** `task env:migrate` now only splits
+the infrastructure advisory out of a `.env.symfony.migrated` produced by the 2.8 API's
+`app:utils:convert-env-to-3x`; it errors if that file is absent. `v1:env-migrate` runs that converter in the
+clone's v1 `api` container (so the v1 stack must be on 2.8.0+ images) — it carries over **both** the env vars and
+the admin/client `config.json` settings (Rejseplanen key, touch regions, pull/scheduling intervals, release-check
+timeout, …). Then distribute the keys env:migrate split into `.env.symfony.infra-advisory` (`COMPOSE_*` → `.env`,
+`PHP_*` → `.env.php`, `NGINX_*` → `.env.nginx`, `MARIADB_*` → `.env.mariadb`). The clone uses the external
+`create-db` schema, so UPGRADE.md's bundled-MariaDB 10→11 auto-upgrade (Step 5) does not apply — leave
+`DATABASE_URL` `serverVersion` matching the external DB.
 
 Migrate via `console:run` (a throwaway `compose run` container that starts only the DB/redis
 dependencies) **before** `task up`, so the v3 stack never serves against an un-migrated schema. The cloned

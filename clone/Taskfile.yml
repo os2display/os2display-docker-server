@@ -131,6 +131,27 @@ tasks:
         admin=$(grep -E '^COMPOSE_ADMIN_CLIENT_PATH=' "$env_file" | cut -d= -f2- | tr -d '"')
         echo "v1 clone up. Verify at https://${domain}${admin:-/admin}"
 
+  v1:env-migrate:
+    desc: |
+      Export the running v1 clone's config in 3.x shape to .env.symfony.migrated
+      — the docker-server way to run the upgrade guide's pre-upgrade converter
+      against the clone. Runs the 2.8 API's `app:utils:convert-env-to-3x` in the
+      v1 `api` container (loaded env + the live admin/client config.json fetched
+      over the clone's URL). REQUIRES `v1:up` with the api image on 2.8.0+
+      (set COMPOSE_VERSION_API=2.8.0 in the cloned .env.docker.local first — the
+      command ships in 2.8). `task env:migrate` then splits the infra advisory
+      out of the result; the 3.x env:migrate has NO sed fallback, so this export
+      is required.
+    preconditions:
+      - sh: "[ -f '{{.DIR}}/../.env.docker.local' ]"
+        msg: "No .env.docker.local — run `clone` first, then `v1:up`."
+    cmds:
+      - |
+        domain=$(grep -E '^COMPOSE_SERVER_DOMAIN=' "{{.DIR}}/../.env.docker.local" | cut -d= -f2- | tr -d '"')
+        {{.DC_V1}} exec -T api bin/console app:utils:convert-env-to-3x \
+          --output=env --app-url="https://${domain}" > "{{.DIR}}/../.env.symfony.migrated"
+        echo "Wrote .env.symfony.migrated. Review it, bring v1 down, then: task env:migrate"
+
   v1:pull:
     desc: "Pull the v1 stack images named in the cloned .env.docker.local."
     cmds:
