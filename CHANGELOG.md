@@ -22,10 +22,9 @@ See the [v2.x.x — Skipped](#v2xx---skipped) entry below for why this major ski
   templates.
 - `task env:diff` compares your `.env.symfony` against the example shipped in the
   currently-pinned API image.
-- `task env:migrate` stages a v3 `.env.symfony` from `env.3x` (the export the 1.x
-  `task upgrade_prep` produces via the 2.8 API's `app:utils:convert-env-to-3x`) when present —
-  splitting off the infrastructure advisory — and falls back to the sed rewrite of a 1.x
-  `.env.docker.local` otherwise.
+- `task env:migrate` refines the `.env.symfony.migrated` that the 1.x `task env_migrate`
+  produces via the 2.8 API's `app:utils:convert-env-to-3x` — splitting off the infrastructure
+  advisory — and falls back to the sed rewrite of a 1.x `.env.docker.local` otherwise.
 - Per-service `.env.<svc>.local` override layer for site-specific tuning; gitignored.
 - Compose profiles (`COMPOSE_PROFILES=mariadb,traefik`) gate built-in services — drop
   `mariadb` for an external DB, drop `traefik` for an external proxy.
@@ -48,7 +47,7 @@ See the [v2.x.x — Skipped](#v2xx---skipped) entry below for why this major ski
 - The mariadb service sets `stop_grace_period: 1m`, so the engine gets room for a clean shutdown
   instead of being SIGKILLed mid-flush by the 10s default — important right before a major bump.
 - `UPGRADE.md` restructured around the 2.8 converter: a pre-upgrade checklist that exports the
-  running 1.x configuration (`task upgrade_prep`) *before* the stack is stopped, converter-first
+  running 1.x configuration (`task env_migrate`) *before* the stack is stopped, converter-first
   env migration with the sed rename demoted to a fallback, MariaDB auto-upgrade and data-volume
   continuity notes, and the `rm docker-compose.yml` step needed before `git checkout`.
 - New MariaDB diagnostics: `task db:metrics`, `db:processes`, `db:errors`.
