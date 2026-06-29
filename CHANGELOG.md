@@ -28,6 +28,8 @@ See the [v2.x.x — Skipped](#v2xx---skipped) entry below for why this major ski
 - Per-service `.env.<svc>.local` override layer for site-specific tuning; gitignored.
 - Compose profiles (`COMPOSE_PROFILES=mariadb,traefik`) gate built-in services — drop
   `mariadb` for an external DB, drop `traefik` for an external proxy.
+- The `os2display` service maps `host.docker.internal` to the host gateway, so a `DATABASE_URL`
+  pointing there reaches a DB on the docker host (needed on Linux; harmless otherwise).
 - Task names `:`-namespaced (`cache:clear`, `tenant:add`, `user:add`, `templates:install`,
   `env:traefik`); old names (`cc`, `tenant_add`, `user_add`, `load_templates`,
   `traefik_env`) kept as deprecated aliases.

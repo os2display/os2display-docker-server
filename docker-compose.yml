@@ -33,6 +33,10 @@ services:
     logging: *default-logging
     networks:
       - app
+    # Map host.docker.internal to the host gateway so a DATABASE_URL pointing
+    # there reaches a DB on the docker host (needed on Linux; harmless otherwise).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     # Symfony app config (APP_SECRET, DATABASE_URL, JWT, OIDC, ADMIN_*,
     # CLIENT_*, ...) lives in .env.symfony — bootstrapped from the API image's
     # /app/.env via `task env:init`.

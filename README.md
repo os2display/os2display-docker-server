@@ -424,6 +424,9 @@ task up
 operate on the bundled mariadb container, not your external DB. Run your own backup tooling
 against the external DB.
 
+If the DB runs on the **docker host**, point `DATABASE_URL` at `host.docker.internal` — the
+`os2display` service maps that alias to the host gateway (needed on Linux; harmless otherwise).
+
 #### How do I run with an external Traefik?
 
 ```bash
