@@ -1,14 +1,14 @@
-# Upgrade guide
+# Upgrade guide -> 3.0
 
-Operator-facing migration recipes between major versions of this repo. For routine
-within-major upgrades (e.g., bumping `OS2DISPLAY_VERSION_API` to a new patch release), see the
-[Cookbook](README.md#cookbook) in the README. For the full list of changes in any given
-release, see [CHANGELOG.md](CHANGELOG.md).
+Operator-facing migration recipes between 1.x -> 3.0 versions (2.8 -> 3.0 of OS2display) of this repo. 
+For routine within-major upgrades (e.g., bumping `OS2DISPLAY_VERSION_API` to a new patch release), 
+see the [Cookbook](README.md#cookbook) in the README. For the full list of changes in any given release, see 
+[CHANGELOG.md](CHANGELOG.md).
 
 ## Version history
 
 - **1.x** — initial Docker hosting tooling. v1.0.0 was the initial release; see
-  [CHANGELOG.md](CHANGELOG.md).
+  [CHANGELOG.md](CHANGELOG.md). (Note that 1.x of the docker-server setup supported 2.x of Os2display)
 - **3.x** — current line. Aligns this repo's major version with upstream
   [`display-api-service`](https://github.com/os2display/display-api-service), which is at 3.x.
 - **(no 2.x.)** Internal canonical work on a `release/2.0.0` branch never shipped as a tagged
@@ -31,8 +31,8 @@ canonical pre-upgrade checklist.
 
 A serious migration: plan a maintenance window, take backups, and rehearse end-to-end on a staging
 host before touching production. The on-disk data survives in place — MariaDB 11 reads 10.x InnoDB
-tablespaces, and the JWT keys and uploaded media don't move — but the schema is rewritten by Doctrine
-migrations and the operator env layout is restructured.
+tablespaces, there are no database schema changes, and the JWT keys and uploaded media don't move — 
+but the database migrations are rolled up to one. 
 
 ### Table of contents
 
@@ -159,8 +159,11 @@ $EDITOR .env.mariadb
 # encodes. On a non-empty data dir the entrypoint IGNORES these (it does not re-initialise), so a
 # mismatch does not error at startup — it surfaces later as Doctrine/tooling auth failures.
 
-# 6. Traefik, then spot any keys the pinned image added that you haven't set.
+# 6. Traefik (interactive): set the domain, Let's Encrypt email and dashboard auth in .env.traefik.
 task env:traefik
+# 7. Sanity check: diff your .env.symfony against the bundled .env in the pinned API image. It
+#    surfaces keys the image added or renamed that your migrated file doesn't set yet — copy any
+#    you need over by hand. (Read-only; it changes nothing.)
 task env:diff
 ```
 
@@ -310,7 +313,3 @@ missing columns) or loudly (Doctrine refusing to start). And once 11.4 has upgra
 place (step 5), the 10.x server can no longer read it — the rollback restores the dump into a fresh
 volume rather than reusing the upgraded files.
 
-## Future migrations
-
-When 4.0 (or some later major) ships, an analogous section will land here. The pattern is the same:
-pre-flight, backup, env restructure if any, image upgrades, run migrations, validate, rollback recipe.
