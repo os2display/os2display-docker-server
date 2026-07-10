@@ -1,8 +1,8 @@
 # Upgrade guide -> 3.0
 
-Operator-facing migration recipes between 1.x -> 3.0 versions (2.8 -> 3.0 of OS2display) of this repo. 
-For routine within-major upgrades (e.g., bumping `OS2DISPLAY_VERSION_API` to a new patch release), 
-see the [Cookbook](README.md#cookbook) in the README. For the full list of changes in any given release, see 
+Operator-facing migration recipes between 1.x -> 3.0 versions (2.8 -> 3.0 of OS2display) of this repo.
+For routine within-major upgrades (e.g., bumping `OS2DISPLAY_VERSION_API` to a new patch release),
+see the [Cookbook](README.md#cookbook) in the README. For the full list of changes in any given release, see
 [CHANGELOG.md](CHANGELOG.md).
 
 ## Version history
@@ -31,8 +31,8 @@ canonical pre-upgrade checklist.
 
 A serious migration: plan a maintenance window, take backups, and rehearse end-to-end on a staging
 host before touching production. The on-disk data survives in place — MariaDB 11 reads 10.x InnoDB
-tablespaces, there are no database schema changes, and the JWT keys and uploaded media don't move — 
-but the database migrations are rolled up to one. 
+tablespaces, there are no database schema changes, and the JWT keys and uploaded media don't move —
+but the database migrations are rolled up to one.
 
 ### Table of contents
 
@@ -312,4 +312,3 @@ changes 1.x doesn't reverse, so a tag-revert over the 3.x-mutated DB fails silen
 missing columns) or loudly (Doctrine refusing to start). And once 11.4 has upgraded the data dir in
 place (step 5), the 10.x server can no longer read it — the rollback restores the dump into a fresh
 volume rather than reusing the upgraded files.
-
