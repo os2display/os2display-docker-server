@@ -1,0 +1,283 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    # Per-container ceiling: max-size × max-file. Defaults give ~30MB per
+    # container; the stack's seven services thus cap at ~210MB total.
+    # Tune via LOG_MAX_SIZE / LOG_MAX_FILE in .env, then `task update`.
+    # Inspect current usage with `task host:logs`.
+    max-size: "${LOG_MAX_SIZE:-10m}"
+    max-file: "${LOG_MAX_FILE:-3}"
+
+networks:
+  frontend:
+    # Compose-managed by default. The actual docker engine network name is
+    # configurable via OS2DISPLAY_FRONTEND_NETWORK in .env (defaults to
+    # "frontend"); services reference this network by the literal alias
+    # `frontend` regardless of its engine name.
+    #
+    # To share an existing frontend network across multiple compose projects
+    # (one traefik fronting several stacks), include compose.shared-frontend.yml
+    # via COMPOSE_FILE — it flips this to external: true.
+    name: ${OS2DISPLAY_FRONTEND_NETWORK:-frontend}
+  app:
+    driver: bridge
+    internal: false
+  proxy:
+    driver: bridge
+    internal: true
+
+services:
+  os2display:
+    image: ghcr.io/os2display/display-api-service:${OS2DISPLAY_VERSION_API}
+    restart: unless-stopped
+    logging: *default-logging
+    networks:
+      - app
+    # Map host.docker.internal to the host gateway so a DATABASE_URL pointing
+    # there reaches a DB on the docker host (needed on Linux; harmless otherwise).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Symfony app config (APP_SECRET, DATABASE_URL, JWT, OIDC, ADMIN_*,
+    # CLIENT_*, ...) lives in .env.symfony — bootstrapped from the API image's
+    # /app/.env via `task env:init`.
+    # PHP-FPM runtime tuning lives in .env.php — copy from
+    # .env.php.example.
+    env_file:
+      - path: .env.symfony
+        required: true
+      - path: .env.symfony.local
+        required: false
+      - path: .env.php
+        required: true
+      - path: .env.php.local
+        required: false
+    depends_on:
+      # mariadb is profile-gated (`mariadb`). `required: false` lets compose
+      # skip this dep when an operator runs against an external database.
+      mariadb:
+        condition: service_healthy
+        required: false
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(@fsockopen('127.0.0.1', 9000) ? 0 : 1);"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./jwt:/app/config/jwt:rw
+      - ./media:/app/public/media:rw
+
+  nginx-api:
+    image: ghcr.io/os2display/display-api-service-nginx:${OS2DISPLAY_VERSION_API}
+    restart: unless-stopped
+    logging: *default-logging
+    networks:
+      - app
+      - frontend
+    # NGINX_* runtime tunables in .env.nginx — copy from
+    # .env.nginx.example. Image defaults suffice for most installs.
+    env_file:
+      - path: .env.nginx
+        required: true
+      - path: .env.nginx.local
+        required: false
+    depends_on:
+      os2display:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=frontend"
+      - "traefik.http.routers.apios2display-http.rule=Host(`${OS2DISPLAY_SERVER_DOMAIN}`)"
+      - "traefik.http.routers.apios2display-http.entrypoints=web"
+      - "traefik.http.routers.apios2display-http.middlewares=redirect-to-https"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+      - "traefik.http.routers.apios2display.rule=Host(`${OS2DISPLAY_SERVER_DOMAIN}`)"
+      - "traefik.http.routers.apios2display.entrypoints=websecure"
+      - "traefik.http.routers.apios2display.middlewares=redirect-to-admin"
+      - "traefik.http.middlewares.redirect-to-admin.redirectregex.regex=^https:\\/\\/([^\\/]+)\\/?$$"
+      - "traefik.http.middlewares.redirect-to-admin.redirectregex.replacement=https://$$1${OS2DISPLAY_ADMIN_CLIENT_PATH}"
+    volumes:
+      - ./media:/app/public/media:rw
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    logging: *default-logging
+    networks:
+      - app
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --save 60 1000 --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    volumes:
+      - redis-data:/data
+
+  mariadb:
+    image: mariadb:11.4.10
+    profiles: [mariadb]
+    restart: unless-stopped
+    logging: *default-logging
+    networks:
+      - app
+    # MariaDB credentials (must match DATABASE_URL in .env.symfony) live in
+    # .env.mariadb — copy from .env.mariadb.example.
+    env_file:
+      - path: .env.mariadb
+        required: true
+      - path: .env.mariadb.local
+        required: false
+    environment:
+      # Run mariadb-upgrade automatically when the server version recorded in
+      # the data dir is older than the running image (e.g. the 1.x 10.x → 3.x
+      # 11.4 jump). Idempotent: the entrypoint version-compares first and does
+      # nothing on an already-current data dir, so it's safe to leave on for
+      # future major bumps too. It also refreshes the healthcheck user and its
+      # /var/lib/mysql/.my-healthcheck.cnf, which rescues data dirs old enough
+      # to predate that user. `task db:upgrade` remains available for an
+      # explicit, operator-driven run.
+      - MARIADB_AUTO_UPGRADE=1
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # The default 10s stop grace can SIGKILL a server still flushing a dirty
+    # InnoDB buffer pool. A hard kill leaves the data dir needing crash
+    # recovery — unsupported across a major-version bump — so give the engine
+    # room for a clean shutdown, especially right before the 10.x → 11.4 cut.
+    stop_grace_period: 1m
+    volumes:
+      - mariadb:/var/lib/mysql:rw
+
+  traefik:
+    image: traefik:v3.6
+    profiles: [traefik]
+    container_name: traefik
+    restart: unless-stopped
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
+    env_file:
+      - path: .env.traefik
+        required: true
+      - path: .env.traefik.local
+        required: false
+    depends_on:
+      # Traefik queries the docker socket via socket-proxy for label
+      # discovery; wait for the proxy to pass its /version healthcheck
+      # before traefik starts asking it for routes.
+      socket-proxy:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./traefik/ssl:/certs:ro
+      - ./traefik/letsencrypt:/letsencrypt
+      - ./traefik/traefik-${SERVER_CERT_PROVIDER:-letsencrypt}.yml:/traefik.yml:ro
+      - ./traefik/dynamic-conf-${SERVER_CERT_PROVIDER:-letsencrypt}.yaml:/config/dynamic-conf.yaml:ro
+    networks:
+      - frontend
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      # Dashboard authentication
+      - "traefik.http.middlewares.dashboard-auth.basicauth.users=${SERVER_DASHBOARD_AUTH}"
+      # Dashboard router
+      - "traefik.http.routers.dashboard.rule=Host(`${SERVER_DOMAIN}`) && PathPrefix(`/traefik/dashboard`)"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.tls=true"
+      - "traefik.http.routers.dashboard.service=api@internal"
+      - "traefik.http.routers.dashboard.middlewares=dashboard-auth,security-headers@file"
+
+  markdownlint:
+    image: peterdavehello/markdownlint
+    profiles: [dev]
+    volumes:
+      - ./:/md
+
+  prettier:
+    # Prettier doesn't ship an official image
+    # (https://github.com/prettier/prettier/issues/15206); jauderho/prettier
+    # is a well-maintained community build.
+    image: jauderho/prettier
+    profiles: [dev]
+    volumes:
+      - ./:/work
+
+  shellcheck:
+    # Upstream koalaman/shellcheck image, official on Docker Hub.
+    image: koalaman/shellcheck:stable
+    profiles: [dev]
+    working_dir: /mnt
+    volumes:
+      - ./:/mnt
+
+  # socket-proxy: brokers Traefik's docker socket access. The highest-trust
+  # container in the stack — it fronts the docker daemon over tcp://2375,
+  # so it gets the most aggressive hardening profile. Rationale documented
+  # inline at each decision below.
+  socket-proxy:
+    # Upstream Tecnativa image on GHCR, version-pinned. Replaces the previous
+    # itkdev/docker-socket-proxy on Docker Hub (no tag = floating :latest).
+    # Multi-arch manifest verified live on GHCR.
+    image: ghcr.io/tecnativa/docker-socket-proxy:v0.4.2
+    profiles: [traefik]
+    container_name: socket-proxy
+    restart: unless-stopped
+    logging: *default-logging
+    # Hardening: no `user: root` override here — the upstream image runs as
+    # a non-root user by default. Keeps the privilege footprint minimal even
+    # before security_opt below.
+    #
+    # Hardening: read_only: true + tmpfs: [/run, /tmp] removes the
+    # container's writable layer except for two in-memory mounts scoped to
+    # the container lifecycle. Mitigates a class of attacks where a
+    # compromised proxy mutates its own filesystem to widen the API
+    # surface it allows through.
+    #
+    # /tmp is needed because the upstream image's entrypoint generates
+    # /tmp/haproxy.cfg from a template via envsubst at start; without a
+    # writable /tmp the container restarts forever.
+    read_only: true
+    tmpfs:
+      - /run
+      - /tmp
+    # Hardening: blocks setuid/setgid escalation regardless of how the image
+    # is built. Defense in depth alongside the read-only filesystem.
+    security_opt:
+      - no-new-privileges:true
+    # Probes /version so `docker compose up --wait` actually waits for the
+    # proxy to be reachable before bringing dependent services up.
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q --spider http://localhost:2375/version || exit 1",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - CONTAINERS=1
+    networks:
+      - proxy
+
+volumes:
+  mariadb:
+  redis-data:
