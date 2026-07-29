@@ -242,6 +242,8 @@ Three docker networks:
 - [How do I upgrade the bundled MariaDB across a major version?](#how-do-i-upgrade-the-bundled-mariadb-across-a-major-version)
 - [How do I switch from Let's Encrypt to a custom certificate?](#how-do-i-switch-from-lets-encrypt-to-a-custom-certificate)
 - [How do I run the stack on localhost without a public domain?](#how-do-i-run-the-stack-on-localhost-without-a-public-domain)
+- [How do I apply a changed env value?](#how-do-i-apply-a-changed-env-value)
+- [How do I override env config locally without committing?](#how-do-i-override-env-config-locally-without-committing)
 - [How do I run with an external database?](#how-do-i-run-with-an-external-database)
 - [How do I run with an external Traefik?](#how-do-i-run-with-an-external-traefik)
 - [How do I share Traefik with another compose project?](#how-do-i-share-traefik-with-another-compose-project)
@@ -377,6 +379,49 @@ filenames `dev.{crt,key}` are deliberate — they sit alongside any operator-sup
 production `docker.{crt,key}` without overwriting it. Not for production: RSA-2048 / SHA-256
 / 365 days / untrusted CA.
 
+#### How do I apply a changed env value?
+
+Run `task up`. Compose recreates every service whose resolved config changed — including the
+contents of its `env_file:` list — and leaves the rest of the stack running.
+
+```bash
+$EDITOR .env.symfony                 # change e.g. an OIDC or MEDIA_* value
+task up                              # recreates os2display; mariadb/redis/traefik untouched
+```
+
+A container's environment is fixed when the container is **created**. `docker compose restart`
+stops and starts the *same* container, so it keeps the old values — a restart is never enough
+for an env change. `task up` is a no-op when nothing changed, so it's safe to run habitually.
+You only need `task update` when bumping `OS2DISPLAY_VERSION_API`, since that also pulls images
+and runs migrations behind a maintenance window.
+
+| Changed | Applied by | Why |
+|---|---|---|
+| `.env.symfony`, `.env.php`, `.env.nginx`, `.env.mariadb`, `.env.traefik` (+ their `.local` siblings) | `task up` | `env_file:` contents are part of the service's resolved config, so a change recreates the container |
+| `.env` — `OS2DISPLAY_VERSION_API`, `OS2DISPLAY_SERVER_DOMAIN`, `OS2DISPLAY_ADMIN_CLIENT_PATH`, `LOG_MAX_*` | `task up` | substituted into the YAML (image tags, Traefik labels, log-driver options) before parsing |
+| `.env` — `COMPOSE_PROFILES` | `task up`, plus an explicit stop | `task up` starts services the new profile set enables; services you *disabled* keep running until you `docker compose stop <svc>` them |
+| `traefik/dynamic-conf-*.yaml` | nothing | Traefik's file provider watches the file and reloads live |
+
+No separate `task cache:clear` is needed afterwards: the API image's entrypoint re-runs
+`composer dump-env prod` and `bin/console cache:warmup` on every container start, so the
+recreate already rebuilds the compiled container against the new values.
+
+To confirm a value actually landed:
+
+```bash
+task console -- debug:dotenv                      # "Value" column is the effective value
+docker compose exec os2display printenv MY_VAR    # the raw process environment
+```
+
+> [!WARNING]
+> Two things that look like verification but aren't. `/app/.env.local.php` inside the container
+> only ever reflects the image's shipped defaults, never your `env_file:` values — see
+> [`.env.local.php` does not reflect your operator config](#envlocalphp-does-not-reflect-your-operator-config).
+> And `bin/console debug:container --env-var=NAME` reports only env vars the compiled container
+> *references* via a `%env(NAME)%` placeholder; `APP_ENV` never appears there (the Kernel reads
+> it before the container exists), so its "None of the environment variables match this name"
+> is not evidence the variable is unset. Use `debug:dotenv` or `printenv` instead.
+
 #### How do I override env config locally without committing?
 
 Each service's compose `env_file:` block reads two files in order:
@@ -394,7 +439,7 @@ $EDITOR .env.mariadb.local
 $EDITOR .env.php.local
 # PHP_PM_MAX_CHILDREN=32
 
-task update                            # picks up the override on container recreate
+task up                                # recreates the affected service, picking up the override
 ```
 
 Use this for site-specific overrides that shouldn't end up in `.env.<svc>`
@@ -779,14 +824,13 @@ anchor in `docker-compose.yml`; defaults give ~30 MiB per container, ~210 MiB to
 
 To change the policy, edit `LOG_MAX_SIZE` / `LOG_MAX_FILE` in `.env` (e.g. `LOG_MAX_SIZE=50m`
 for noisy debugging on a bigger host, or `LOG_MAX_SIZE=2m` on a small one), then run
-`task update`.
+`task up`.
 
 > [!NOTE]
-> A plain `task up` will **not** pick up new `LOG_MAX_*` values. Docker only applies log-driver
-> options on container creation, so the change requires `--force-recreate` (which `task update`
-> does, but `task up` doesn't). Symptom: edits look applied (`docker inspect` shows the new
-> values on the next recreate) but the running container's old retention policy stays in
-> effect until then.
+> Docker applies log-driver options only on container **creation**, so a `docker compose restart`
+> leaves the running container on its old retention policy. `task up` recreates the affected
+> containers, which is enough — see
+> [How do I apply a changed env value?](#how-do-i-apply-a-changed-env-value).
 
 The task itself reads sizes via a transient `alpine` container with a read-only `/var/lib/docker`
 mount, since docker's json log files are root-owned on the host. Linux only.
@@ -942,9 +986,11 @@ implications worth knowing:
   `task console -- debug:dotenv` (its "Value" column is the effective resolved value) or
   `getenv()` from inside the container.
 - **`composer dump-env` runs once at container start.** If you change `.env.symfony` and want
-  the new values active, restart the container (`docker compose restart os2display` /
-  `task update`). Editing `/app/.env` by hand inside an already-running container does
-  *nothing* until the next restart re-runs `dump-env`.
+  the new values active, run `task up` — a `docker compose restart` reuses the existing
+  container and so keeps its original environment. See
+  [How do I apply a changed env value?](#how-do-i-apply-a-changed-env-value). Editing `/app/.env`
+  by hand inside an already-running container does *nothing* until the next start re-runs
+  `dump-env`.
 
 If you ever explicitly want to suppress a `.env.local.php` value (say a sentinel that's leaking
 through because your env_file omits the key), set `KEY=` (empty) in `.env.symfony` rather than
