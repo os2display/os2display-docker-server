@@ -31,8 +31,10 @@ canonical pre-upgrade checklist.
 
 A serious migration: plan a maintenance window, take backups, and rehearse end-to-end on a staging
 host before touching production. The on-disk data survives in place — MariaDB 11 reads 10.x InnoDB
-tablespaces, there are no database schema changes, and the JWT keys and uploaded media don't move —
-but the database migrations are rolled up to one.
+tablespaces, and the JWT keys and uploaded media don't move. As long as you first update to the
+latest 2.8 release and apply its migrations (the canonical guide's pre-upgrade step), the 2.8 → 3.0
+jump introduces no database schema changes of its own — 3.0 only consolidates the accumulated 2.x
+migration history into a single rolled-up migration.
 
 ### Table of contents
 
@@ -307,8 +309,8 @@ What gets destroyed and restored:
   reach v1's data.
 - **Redis cache** — named volume, removed and rebuilt empty. v1 repopulates on first request.
 
-Don't roll back without restoring the dump: 3.x `app:update` migrations may have applied schema
-changes 1.x doesn't reverse, so a tag-revert over the 3.x-mutated DB fails silently (wrong queries,
-missing columns) or loudly (Doctrine refusing to start). And once 11.4 has upgraded the data dir in
-place (step 5), the 10.x server can no longer read it — the rollback restores the dump into a fresh
-volume rather than reusing the upgraded files.
+Don't roll back without restoring the dump: the forward update to 2.8/3.0 and the migration-history
+rollup move the DB past what an older 1.x tag expects, so a tag-revert over the migrated DB fails
+silently (wrong queries, missing columns) or loudly (Doctrine refusing to start). And once 11.4 has
+upgraded the data dir in place (step 5), the 10.x server can no longer read it — the rollback
+restores the dump into a fresh volume rather than reusing the upgraded files.
