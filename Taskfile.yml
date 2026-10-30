@@ -278,7 +278,7 @@ tasks:
         msg: ".env.symfony missing — run 'task env:init' first."
     cmds:
       - |
-        IMAGE="ghcr.io/os2display/display-api-service:${OS2DISPLAY_VERSION_API}"
+        IMAGE="ghcr.io/os2display/os2display:${OS2DISPLAY_VERSION_API}"
         tmp=$(mktemp)
         docker run --rm --entrypoint sh "$IMAGE" -c 'cat /app/.env' > "$tmp"
         diff -u .env.symfony "$tmp" || true

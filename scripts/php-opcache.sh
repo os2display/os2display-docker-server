@@ -34,7 +34,7 @@ declare(strict_types=1);
 
 if ('' === trim((string) shell_exec('command -v opcache-status 2>/dev/null'))) {
     fwrite(STDERR, "Error: this API image does not ship the 'opcache-status' probe.\n");
-    fwrite(STDERR, "It ships in display-api-service images 3.0.0-rc4 and newer — bump\n");
+    fwrite(STDERR, "It ships in os2display images 3.0.0 and newer — bump\n");
     fwrite(STDERR, "OS2DISPLAY_VERSION_API in .env, then 'task update'.\n");
     exit(1);
 }

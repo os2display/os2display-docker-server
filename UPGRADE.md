@@ -10,7 +10,7 @@ see the [Cookbook](README.md#cookbook) in the README. For the full list of chang
 - **1.x** — initial Docker hosting tooling. v1.0.0 was the initial release; see
   [CHANGELOG.md](CHANGELOG.md). (Note that 1.x of the docker-server setup supported 2.x of Os2display)
 - **3.x** — current line. Aligns this repo's major version with upstream
-  [`display-api-service`](https://github.com/os2display/display-api-service), which is at 3.x.
+  [`os2display`](https://github.com/os2display/os2display), which is at 3.x.
 - **(no 2.x.)** Internal canonical work on a `release/2.0.0` branch never shipped as a tagged
   release. We skip 2.x so operators see one major-version number per stack — this docker-server
   3.x runs the upstream API 3.x. No re-numbering across boundaries.
@@ -18,7 +18,7 @@ see the [Cookbook](README.md#cookbook) in the README. For the full list of chang
 ## 1.x → 3.x migration
 
 The **authoritative** upgrade guide is
-[`display-api-service` `UPGRADE.md`](https://github.com/os2display/display-api-service/blob/main/UPGRADE.md).
+[`os2display` `UPGRADE.md`](https://github.com/os2display/os2display/blob/main/UPGRADE.md).
 Read it first and follow it throughout — it owns *what changed*, the pre-upgrade configuration
 export, the database and content migration, and the post-upgrade sanity checks, all of which apply
 here unchanged.
@@ -49,7 +49,7 @@ but the database migrations are rolled up to one.
 ### What this repo adds on top of the canonical changes
 
 The canonical
-[What changed](https://github.com/os2display/display-api-service/blob/main/UPGRADE.md#what-changed)
+[What changed](https://github.com/os2display/os2display/blob/main/UPGRADE.md#what-changed)
 covers the application-level changes (one image; `config.json` → `ADMIN_*`/`CLIENT_*` env; the
 `APP_` prefix dropped; bundled templates; removed feed types). On the hosting side this repo also
 changes:
@@ -62,7 +62,7 @@ changes:
 - **Bundled MariaDB 10.x → 11.4 LTS.** Binary-compatible at the data-file level; the 3.x mariadb
   service sets `MARIADB_AUTO_UPGRADE=1`, so `mariadb-upgrade` runs on the first 11.4 boot.
 - **Image registry switched** from `itkdev/os2display-*` (Docker Hub) to
-  `ghcr.io/os2display/display-api-service{,-nginx}` (GHCR) — handled by the 3.x compose file.
+  `ghcr.io/os2display/os2display{,-nginx}` (GHCR) — handled by the 3.x compose file.
 
 ### Step 1 — Pre-upgrade (on 1.x, stack still up)
 
@@ -227,7 +227,7 @@ reserved-word identifiers in 11.4 that were valid in 10.x.
 ### Step 6 — Database migration and first boot
 
 The canonical
-[Step 3 — Database and content migration](https://github.com/os2display/display-api-service/blob/main/UPGRADE.md#step-3--database-and-content-migration)
+[Step 3 — Database and content migration](https://github.com/os2display/os2display/blob/main/UPGRADE.md#step-3--database-and-content-migration)
 owns this — including the deprecated-feed-source cleanup. On docker-server, run it in a one-off
 container (DB/redis only, no web tier) so the stack never serves an un-migrated schema:
 
@@ -251,7 +251,7 @@ step 1 flagged feed sources using removed feed types, clean them up per the cano
 ### Post-upgrade validation
 
 Run the canonical
-[post-upgrade sanity checks](https://github.com/os2display/display-api-service/blob/main/UPGRADE.md#post-upgrade-sanity-checks).
+[post-upgrade sanity checks](https://github.com/os2display/os2display/blob/main/UPGRADE.md#post-upgrade-sanity-checks).
 The docker-server extras:
 
 - [ ] `docker compose ps` shows all profile-active services `healthy`.

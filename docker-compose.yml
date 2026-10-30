@@ -28,7 +28,7 @@ networks:
 
 services:
   os2display:
-    image: ghcr.io/os2display/display-api-service:${OS2DISPLAY_VERSION_API}
+    image: ghcr.io/os2display/os2display:${OS2DISPLAY_VERSION_API}
     restart: unless-stopped
     logging: *default-logging
     networks:
@@ -70,7 +70,7 @@ services:
       - ./media:/app/public/media:rw
 
   nginx-api:
-    image: ghcr.io/os2display/display-api-service-nginx:${OS2DISPLAY_VERSION_API}
+    image: ghcr.io/os2display/os2display-nginx:${OS2DISPLAY_VERSION_API}
     restart: unless-stopped
     logging: *default-logging
     networks:
