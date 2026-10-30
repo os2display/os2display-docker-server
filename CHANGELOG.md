@@ -1,6 +1,6 @@
 # Changelog
 
-## v3.0.0 - 2026-10-30
+## 3.0.0 - 2026-10-30
 
 See [UPGRADE.md](UPGRADE.md) for the step-by-step 1.x → 3.x recipe.
 See the [v2.x.x — Skipped](#v2xx---skipped) entry below for why this major skips 2.x.
