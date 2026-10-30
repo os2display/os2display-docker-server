@@ -1,16 +1,18 @@
 # Changelog
 
-## [Unreleased] — release/3.0.0
+## v3.0.0 - 2026-10-30
 
 See [UPGRADE.md](UPGRADE.md) for the step-by-step 1.x → 3.x recipe.
 See the [v2.x.x — Skipped](#v2xx---skipped) entry below for why this major skips 2.x.
 
 ### Application
 
-- v3 `display-api-service` image bundles the admin and screen-client UIs as Symfony routes
+- v3 `os2display` image bundles the admin and screen-client UIs as Symfony routes
   — the separate `admin` and `client` compose services are gone.
 - Bump bundled MariaDB from 10.x to 11.4 LTS.
 - All images now pull from `ghcr.io/os2display/*` (was Docker Hub / itk-dev).
+- Pull `ghcr.io/os2display/os2display` and `os2display-nginx`, following the upstream rename of
+  `os2display/display-api-service` to `os2display/os2display`, and pin `OS2DISPLAY_VERSION_API` to `3.0.0`.
 
 ### Operator surface
 
@@ -108,7 +110,7 @@ See the [v2.x.x — Skipped](#v2xx---skipped) entry below for why this major ski
 No 2.x release was ever tagged. Internal canonical work happened on a `release/2.0.0`
 branch but never shipped publicly. The next public major after the 1.x line is 3.0.0,
 chosen to align with upstream
-[`display-api-service`](https://github.com/os2display/display-api-service) (at 3.x) so
+[`os2display`](https://github.com/os2display/os2display) (at 3.x) so
 operators see one major-version number per stack.
 
 ## v1.1.2 - 2026-02-06

@@ -12,7 +12,7 @@
 
 Deployment tooling for hosting the [os2display](https://github.com/os2display) v3 API on a single
 host. Wraps the upstream
-[`display-api-service`](https://github.com/os2display/display-api-service) image (which bundles
+[`os2display`](https://github.com/os2display/os2display) image (which bundles
 the admin UI and screen client in 3.x) with a docker-compose stack, optional bundled MariaDB and
 Traefik, and a Taskfile for the operator workflow.
 
@@ -999,7 +999,7 @@ omitting the line — Symfony's "real env wins" rule only kicks in when the vari
 ### Migrating from an older release
 
 See [UPGRADE.md](UPGRADE.md) for the step-by-step 1.x → 3.x migration recipe (this repo skips
-2.x to align its major version with upstream `display-api-service`).
+2.x to align its major version with upstream `os2display`).
 
 ---
 
@@ -1010,7 +1010,7 @@ See [UPGRADE.md](UPGRADE.md) for the step-by-step 1.x → 3.x migration recipe (
 > the Taskfile, env-file layout, Traefik wiring, CI workflows, and
 > bundled service composition. To develop the **OS2display application
 > itself** (admin UI, screen client, API), work in the upstream
-> [`display-api-service`](https://github.com/os2display/display-api-service)
+> [`os2display`](https://github.com/os2display/os2display)
 > repo, which ships its own docker compose dev environment.
 
 ### Local dev quick start
@@ -1374,8 +1374,8 @@ proxy a single Symfony command are implemented as thin wrappers around
 
 | Image | Registry | Profile | Auth required |
 |---|---|---|---|
-| `ghcr.io/os2display/display-api-service` | GHCR | always | none (public) |
-| `ghcr.io/os2display/display-api-service-nginx` | GHCR | always | none (public) |
+| `ghcr.io/os2display/os2display` | GHCR | always | none (public) |
+| `ghcr.io/os2display/os2display-nginx` | GHCR | always | none (public) |
 | `ghcr.io/tecnativa/docker-socket-proxy` | GHCR | `traefik` | none (public) |
 | `redis:8-alpine` | Docker Hub | always | none, but rate-limited |
 | `mariadb:11.4.x` | Docker Hub | `mariadb` | none, but rate-limited |

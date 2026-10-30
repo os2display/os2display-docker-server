@@ -81,7 +81,7 @@ if [ -f .env.symfony ] && [ "${FORCE:-0}" != "1" ]; then
   exit 0
 fi
 
-IMAGE="ghcr.io/os2display/display-api-service:${OS2DISPLAY_VERSION_API}"
+IMAGE="ghcr.io/os2display/os2display:${OS2DISPLAY_VERSION_API}"
 
 # Match the mariadb pin in docker-compose.yml; falls back to a sensible
 # default if the line moves. Format expected: `image: mariadb:11.4.10`.
