@@ -1,0 +1,30 @@
+### ### YAML
+###
+### Validates YAML files via Prettier.
+###
+### #### Assumptions
+###
+### 1. A docker compose service named `prettier` (gated behind the `dev`
+###    profile) for running [Prettier](https://prettier.io/) exists.
+
+name: YAML
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - develop
+      - "release/**"
+
+jobs:
+  yaml-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Create external `frontend` network
+        run: docker network create frontend
+
+      - name: Check YAML formatting
+        run: docker compose --profile dev run --rm prettier '**/*.{yml,yaml}' --check

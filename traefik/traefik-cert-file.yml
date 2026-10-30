@@ -1,0 +1,42 @@
+api:
+  dashboard: true
+  insecure: false
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+
+  websecure:
+    address: ":443"
+    http:
+      tls:
+        # No certResolver — certs come from the file provider's
+        # tls.certificates: block in dynamic-conf-cert-file.yaml.
+        # Traefik selects per-host via SNI.
+        options: modern@file
+    http3: {}
+
+providers:
+  file:
+    directory: /config
+    watch: true
+  docker:
+    endpoint: "tcp://socket-proxy:2375"
+    exposedByDefault: false
+
+# Logging
+log:
+  level: INFO
+  format: json
+
+accessLog:
+  format: json
+  fields:
+    headers:
+      defaultMode: drop

@@ -1,0 +1,18 @@
+# Shared-frontend override for operators running multiple compose projects
+# behind a single traefik. Include via COMPOSE_FILE in .env:
+#
+#   COMPOSE_FILE=docker-compose.yml:compose.shared-frontend.yml
+#
+# Flips the `frontend` network to external. The operator must pre-create a
+# network with the name in OS2DISPLAY_FRONTEND_NETWORK (default "frontend"):
+#
+#   docker network create os2display_shared_frontend
+#   # then in .env: OS2DISPLAY_FRONTEND_NETWORK=os2display_shared_frontend
+#
+# Every other stack on the host attaches to the same engine network and
+# routes through this stack's traefik (or whichever traefik is on it).
+
+networks:
+  frontend:
+    external: true
+    name: ${OS2DISPLAY_FRONTEND_NETWORK:-frontend}
