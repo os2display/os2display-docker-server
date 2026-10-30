@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## 1.2.0 - 2026-10-30
+
   - Add new task env_migrate that converts the running 2.x configuration to a
     3.x-shaped .env.symfony.migrated on the host (wraps the api console command
     app:utils:convert-env-to-3x, requires display-api-service >= 2.8)
